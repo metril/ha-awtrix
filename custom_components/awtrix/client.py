@@ -281,17 +281,18 @@ class AwtrixMqttClient(AwtrixClient):
         self._prefix = prefix
         self.last_stats: AwtrixStats | None = None
         self._last_settings: dict | None = None
+        _LOGGER.info("AWTRIX MQTT client initialized with prefix: %r", prefix)
 
-    async def _publish(self, topic: str, payload: str = "") -> None:
+    async def _publish(self, topic: str, payload: str | None = None) -> None:
         """Publish a message to the given MQTT topic."""
         full_topic = f"{self._prefix}/{topic}"
         _LOGGER.debug(
-            "AWTRIX MQTT publish: %s -> %s",
+            "AWTRIX MQTT publish: topic=%s payload=%s",
             full_topic,
-            payload[:200] if payload else "(empty)",
+            repr(payload[:200]) if payload else "(none)",
         )
-        from homeassistant.components import mqtt
-        await mqtt.async_publish(self._hass, full_topic, payload, qos=0, retain=False)
+        from homeassistant.components.mqtt import async_publish
+        await async_publish(self._hass, full_topic, payload)
 
     def process_stats_message(self, payload: str) -> None:
         """Parse a stats MQTT message and store the result."""
@@ -328,7 +329,7 @@ class AwtrixMqttClient(AwtrixClient):
 
     async def remove_app(self, name: str) -> None:
         """Remove a custom app by sending an empty payload."""
-        await self._publish(f"custom/{name}", json.dumps({}))
+        await self._publish(f"custom/{name}")
 
     async def send_notification(self, payload: dict) -> None:
         """Publish a notification."""
@@ -336,7 +337,7 @@ class AwtrixMqttClient(AwtrixClient):
 
     async def dismiss_notification(self) -> None:
         """Dismiss the current notification."""
-        await self._publish("notify/dismiss", "")
+        await self._publish("notify/dismiss")
 
     async def set_indicator(self, index: int, color: list[int] | None) -> None:
         """Set or clear an indicator LED."""
@@ -357,11 +358,11 @@ class AwtrixMqttClient(AwtrixClient):
 
     async def next_app(self) -> None:
         """Switch to the next app."""
-        await self._publish("nextapp", "")
+        await self._publish("nextapp")
 
     async def previous_app(self) -> None:
         """Switch to the previous app."""
-        await self._publish("previousapp", "")
+        await self._publish("previousapp")
 
     async def switch_app(self, name: str) -> None:
         """Switch to a specific app by name."""
@@ -377,7 +378,7 @@ class AwtrixMqttClient(AwtrixClient):
 
     async def reboot(self) -> None:
         """Reboot the device."""
-        await self._publish("reboot", "")
+        await self._publish("reboot")
 
     async def get_screen(self) -> bytes:
         """Not available via MQTT; returns empty bytes."""
