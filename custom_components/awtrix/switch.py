@@ -8,7 +8,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, SETTING_AUTO_BRIGHTNESS
+from .const import (
+    CONF_NIGHT_MODE_BRIGHTNESS,
+    DOMAIN,
+    SETTING_AUTO_BRIGHTNESS,
+    SETTING_AUTO_TRANSITION,
+    SETTING_BRIGHTNESS,
+    SETTING_MATRIX_POWER,
+)
 from .coordinator import AwtrixCoordinator
 from .entity import AwtrixEntity
 
@@ -20,9 +27,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up AWTRIX switch entities from a config entry."""
     coordinator: AwtrixCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    night_switch = AwtrixNightModeSwitch(coordinator, entry)
+    hass.data[DOMAIN][entry.entry_id].setdefault("night_mode_switches", []).append(night_switch)
     async_add_entities([
         AwtrixPowerSwitch(coordinator, entry),
         AwtrixAutoBrightnessSwitch(coordinator, entry),
+        night_switch,
     ])
 
 
@@ -105,3 +115,55 @@ class AwtrixAutoBrightnessSwitch(AwtrixEntity, SwitchEntity):
         if self.coordinator.data:
             self.coordinator.data.settings[SETTING_AUTO_BRIGHTNESS] = False
             self.coordinator.async_set_updated_data(self.coordinator.data)
+
+
+class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
+    """Switch to activate night mode on the AWTRIX device."""
+
+    _attr_name = "Night Mode"
+    _attr_icon = "mdi:weather-night"
+
+    def __init__(self, coordinator: AwtrixCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        uid = entry.unique_id or entry.entry_id
+        self._attr_unique_id = f"{uid}_night_mode"
+        self._entry = entry
+        self._previous_brightness: int | None = None
+        self._is_on: bool = False
+
+    @property
+    def is_on(self) -> bool:
+        """Return whether night mode is active."""
+        return self._is_on
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Activate night mode."""
+        # Save current brightness before changing it
+        if self.coordinator.data:
+            self._previous_brightness = self.coordinator.data.settings.get(SETTING_BRIGHTNESS)
+
+        night_brightness = self._entry.options.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
+        try:
+            if night_brightness == 0:
+                await self.coordinator.client.update_settings({SETTING_MATRIX_POWER: False})
+            else:
+                await self.coordinator.client.update_settings({SETTING_BRIGHTNESS: night_brightness})
+            await self.coordinator.client.update_settings({SETTING_AUTO_TRANSITION: False})
+            await self.coordinator.client.switch_app("Time")
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to activate night mode: {err}") from err
+        self._is_on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Deactivate night mode."""
+        try:
+            await self.coordinator.client.update_settings({SETTING_MATRIX_POWER: True})
+            await self.coordinator.client.update_settings(
+                {SETTING_BRIGHTNESS: self._previous_brightness or 128}
+            )
+            await self.coordinator.client.update_settings({SETTING_AUTO_TRANSITION: True})
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to deactivate night mode: {err}") from err
+        self._is_on = False
+        self.async_write_ha_state()

@@ -35,9 +35,13 @@ from .const import (
     CONF_DURATION,
     CONF_HOST,
     CONF_MQTT_PREFIX,
+    CONF_NIGHT_MODE_BRIGHTNESS,
+    CONF_NIGHT_MODE_END,
+    CONF_NIGHT_MODE_START,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_PORT,
+    CONF_PRESENCE_ENTITY,
     CONF_SCROLL_SPEED,
     CONF_SHOW_CONDITION,
     CONF_TEXT_COLOR,
@@ -357,6 +361,17 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     self.config_entry, data=current_data
                 )
 
+            self._general_options[CONF_NIGHT_MODE_BRIGHTNESS] = user_input.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
+            night_start = user_input.get(CONF_NIGHT_MODE_START, "").strip()
+            if night_start:
+                self._general_options[CONF_NIGHT_MODE_START] = night_start
+            night_end = user_input.get(CONF_NIGHT_MODE_END, "").strip()
+            if night_end:
+                self._general_options[CONF_NIGHT_MODE_END] = night_end
+            presence = user_input.get(CONF_PRESENCE_ENTITY, "").strip()
+            if presence:
+                self._general_options[CONF_PRESENCE_ENTITY] = presence
+
             self._enabled_apps = user_input.get("enabled_apps", [])
 
             if self._enabled_apps:
@@ -399,6 +414,26 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                 mode=SelectSelectorMode.LIST,
             )
         )
+
+        schema_dict[vol.Optional(
+            CONF_NIGHT_MODE_BRIGHTNESS,
+            default=options.get(CONF_NIGHT_MODE_BRIGHTNESS, 0),
+        )] = NumberSelector(NumberSelectorConfig(min=0, max=255, step=1, mode="slider"))
+
+        schema_dict[vol.Optional(
+            CONF_NIGHT_MODE_START,
+            default=options.get(CONF_NIGHT_MODE_START, ""),
+        )] = TextSelector()
+
+        schema_dict[vol.Optional(
+            CONF_NIGHT_MODE_END,
+            default=options.get(CONF_NIGHT_MODE_END, ""),
+        )] = TextSelector()
+
+        schema_dict[vol.Optional(
+            CONF_PRESENCE_ENTITY,
+            default=options.get(CONF_PRESENCE_ENTITY, ""),
+        )] = EntitySelector(EntitySelectorConfig(domain="binary_sensor"))
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_dict))
 

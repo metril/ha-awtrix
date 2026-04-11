@@ -7,7 +7,7 @@ import logging
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -19,9 +19,13 @@ from .const import (
     CONF_DEVICE_HOST,
     CONF_HOST,
     CONF_MQTT_PREFIX,
+    CONF_NIGHT_MODE_BRIGHTNESS,
+    CONF_NIGHT_MODE_END,
+    CONF_NIGHT_MODE_START,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_PORT,
+    CONF_PRESENCE_ENTITY,
     CONF_USERNAME,
     CONNECTION_HTTP,
     CONNECTION_MQTT,
@@ -149,6 +153,67 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Night mode schedule and presence sensor listeners
+    night_start = entry.options.get(CONF_NIGHT_MODE_START, "")
+    night_end = entry.options.get(CONF_NIGHT_MODE_END, "")
+    unsub_listeners = []
+
+    if night_start and night_end:
+        from homeassistant.helpers.event import async_track_time_change
+
+        start_parts = night_start.split(":")
+        end_parts = night_end.split(":")
+
+        @callback
+        def _night_start_cb(_now):
+            night_bri = entry.options.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
+
+            async def _activate():
+                if night_bri == 0:
+                    await client.update_settings({"MATP": False})
+                else:
+                    await client.update_settings({"BRI": night_bri})
+                await client.update_settings({"ATRANS": False})
+                await client.switch_app("Time")
+
+            hass.async_create_task(_activate())
+
+        @callback
+        def _night_end_cb(_now):
+            async def _deactivate():
+                await client.update_settings({"MATP": True, "ATRANS": True, "BRI": 128})
+
+            hass.async_create_task(_deactivate())
+
+        unsub_listeners.append(async_track_time_change(
+            hass, _night_start_cb,
+            hour=int(start_parts[0]), minute=int(start_parts[1]), second=0,
+        ))
+        unsub_listeners.append(async_track_time_change(
+            hass, _night_end_cb,
+            hour=int(end_parts[0]), minute=int(end_parts[1]), second=0,
+        ))
+
+    presence_entity = entry.options.get(CONF_PRESENCE_ENTITY, "")
+    if presence_entity:
+        from homeassistant.helpers.event import async_track_state_change_event
+
+        @callback
+        def _presence_cb(event):
+            new_state = event.data.get("new_state")
+            if new_state is None:
+                return
+            if new_state.state == "on":
+                hass.async_create_task(client.update_settings({"MATP": True}))
+            else:
+                hass.async_create_task(client.update_settings({"MATP": False}))
+
+        unsub_listeners.append(async_track_state_change_event(
+            hass, presence_entity, _presence_cb
+        ))
+
+    hass.data[DOMAIN][entry.entry_id]["unsub_listeners"] = unsub_listeners
+
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     # Register services (once, not per entry)
@@ -166,6 +231,10 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     data = hass.data[DOMAIN].get(entry.entry_id, {})
+
+    for unsub in data.get("unsub_listeners", []):
+        unsub()
+
     app_manager = data.get("app_manager")
     if app_manager:
         await app_manager.async_stop()
