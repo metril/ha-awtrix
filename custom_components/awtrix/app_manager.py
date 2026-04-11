@@ -17,7 +17,7 @@ from homeassistant.helpers.event import (
 from .client import AwtrixClient
 from .const import (
     DATE_FORMATS,
-    ICON_BATTERY,
+    ICON_BATTERY_FULL,
     ICON_CALENDAR,
     ICON_CLOCK,
     ICON_HOURGLASS,
@@ -26,9 +26,17 @@ from .const import (
     ICON_THERMOMETER,
     TIME_FORMATS,
     WEATHER_ICON_MAP,
+    WEATHER_OVERLAY_MAP,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Base properties applied to all app payloads
+_BASE_PROPS = {
+    "textCase": 2,   # preserve original case
+    "pushIcon": 2,   # icon scrolls with text
+    "lifetime": 0,   # don't auto-expire
+}
 
 
 class AwtrixAppManager:
@@ -154,11 +162,29 @@ class AwtrixAppManager:
         if app_name == "date":
             fmt = cfg.get("format", next(iter(DATE_FORMATS)))
             text = dt_now().strftime(fmt)
-            return {"icon": ICON_CALENDAR, "text": text}
+            payload = {
+                "icon": ICON_CALENDAR,
+                "text": text,
+                "pushIcon": 0,
+                "noScroll": True,
+                "textCase": 2,
+                "lifetime": 0,
+                "color": [255, 200, 50],  # warm yellow
+            }
+            return self._apply_display_config(payload, cfg)
         if app_name == "time":
             fmt = cfg.get("format", next(iter(TIME_FORMATS)))
             text = dt_now().strftime(fmt)
-            return {"icon": ICON_CLOCK, "text": text}
+            payload = {
+                "icon": ICON_CLOCK,
+                "text": text,
+                "pushIcon": 0,
+                "noScroll": True,
+                "textCase": 2,
+                "lifetime": 0,
+                "color": [255, 255, 255],
+            }
+            return self._apply_display_config(payload, cfg)
         return None
 
     # ------------------------------------------------------------------
@@ -264,18 +290,24 @@ class AwtrixAppManager:
             today = forecasts[0]
             hi = today.get("temperature", "?")
             lo = today.get("templow", "?")
-            unit = (state.attributes.get("temperature_unit", "°") if state is not None else "°")
-            detail = today.get("condition", condition).replace("-", " ").title()
-            text = f"\u2191{hi}{unit} \u2193{lo}{unit} {detail}"
+            text = f"H:{hi} L:{lo}"
         elif state is not None:
             temp = state.attributes.get("temperature", "")
             unit = state.attributes.get("temperature_unit", "°")
-            text = f"{temp}{unit} {condition.replace('-', ' ').title()}"
+            text = f"{temp}{unit}"
         else:
             return
 
-        p = {"icon": icon, "text": text}
-        await self._send_app("weather_today", p)
+        payload = {
+            "icon": icon,
+            "text": text,
+            "pushIcon": 0,
+            "noScroll": True,
+            "textCase": 2,
+            "lifetime": 0,
+        }
+        payload = self._apply_display_config(payload, cfg)
+        await self._send_app("weather_today", payload)
 
     async def _push_weather_forecast_mode(
         self, entity_id: str, cfg: dict, mode: str
@@ -304,12 +336,29 @@ class AwtrixAppManager:
             await self._send_app(f"weather_{mode}", p)
 
     # ------------------------------------------------------------------
+    # Display config helper
+    # ------------------------------------------------------------------
+
+    def _apply_display_config(self, payload: dict, cfg: dict) -> dict:
+        """Apply user display preferences to payload."""
+        color = cfg.get("text_color")
+        if color:
+            payload["color"] = color  # already [R, G, B] from config
+        duration = cfg.get("display_duration", 0)
+        if duration > 0:
+            payload["duration"] = duration
+        scroll_speed = cfg.get("scroll_speed", 100)
+        if scroll_speed != 100:
+            payload["scrollSpeed"] = scroll_speed
+        return payload
+
+    # ------------------------------------------------------------------
     # Weather payload builders
     # ------------------------------------------------------------------
 
-    def _get_weather_icon(self, condition: str, cfg: dict) -> str:
+    def _get_weather_icon(self, condition: str, cfg: dict) -> int:
         overrides = cfg.get("icon_overrides", {})
-        icon = overrides.get(condition) or WEATHER_ICON_MAP.get(condition, "2283")
+        icon = overrides.get(condition) or WEATHER_ICON_MAP.get(condition, 2283)
         return icon
 
     def _build_weather_current_payload(
@@ -320,8 +369,45 @@ class AwtrixAppManager:
         icon = self._get_weather_icon(condition, cfg)
         temp = state.attributes.get("temperature", "")
         unit = state.attributes.get("temperature_unit", "°")
-        text = f"{temp}{unit} {condition.replace('-', ' ').title()}"
-        return {"icon": icon, "text": text}
+
+        # Compact: just temp. Condition shown by icon.
+        if cfg.get("show_condition_text", False):
+            cond_text = condition.replace("-", " ").title()
+            text = f"{temp}{unit} {cond_text}"
+        else:
+            text = f"{temp}{unit}"
+
+        payload = {
+            "icon": icon,
+            "text": text,
+            "pushIcon": 0,  # static icon for current weather
+            "noScroll": not cfg.get("show_condition_text", False),
+            "textCase": 2,
+            "lifetime": 0,
+        }
+
+        # Weather overlay (rain/snow/storm effect)
+        if cfg.get("weather_overlay", False):
+            overlay = WEATHER_OVERLAY_MAP.get(condition)
+            if overlay:
+                payload["overlay"] = overlay
+
+        # Temperature-based color: blue for cold, green for mild, red for hot
+        if not cfg.get("text_color"):
+            try:
+                t = float(temp)
+                if t < 32:  # freezing
+                    payload["color"] = [0, 100, 255]
+                elif t < 60:
+                    payload["color"] = [0, 200, 255]
+                elif t < 80:
+                    payload["color"] = [0, 255, 100]
+                else:
+                    payload["color"] = [255, 80, 0]
+            except (ValueError, TypeError):
+                pass
+
+        return self._apply_display_config(payload, cfg)
 
     def _build_weather_forecast_payload(
         self, cfg: dict, mode: str, forecasts: list[dict]
@@ -333,16 +419,23 @@ class AwtrixAppManager:
             count = cfg.get("hourly_count", 4)
             parts: list[str] = []
             for fc in forecasts[:count]:
-                # datetime string e.g. "2026-04-10T14:00:00"
                 dt_str = fc.get("datetime", "")
                 try:
                     dt = datetime.fromisoformat(dt_str)
-                    label = dt.strftime("%-I%p").replace("AM", "AM").replace("PM", "PM")
+                    hour = dt.strftime("%-I%p")[:-1]  # e.g. "2P", "3P"
                 except (ValueError, TypeError):
-                    label = dt_str[:5]
+                    hour = dt_str[:5]
                 temp = fc.get("temperature", "?")
-                parts.append(f"{label} {temp}\u00b0")
-            return {"icon": ICON_CLOCK, "text": "  ".join(parts), "scrollSpeed": 50}
+                parts.append(f"{hour} {temp}\u00b0")
+            payload = {
+                "icon": ICON_CLOCK,
+                "text": " ".join(parts),
+                "textCase": 2,
+                "pushIcon": 2,
+                "lifetime": 0,
+                "scrollSpeed": cfg.get("scroll_speed", 80),
+            }
+            return self._apply_display_config(payload, cfg)
 
         if mode == "daily":
             count = cfg.get("daily_count", 5)
@@ -351,13 +444,21 @@ class AwtrixAppManager:
                 dt_str = fc.get("datetime", "")
                 try:
                     dt = datetime.fromisoformat(dt_str)
-                    day = dt.strftime("%a")
+                    day = dt.strftime("%a")[:2]  # e.g. "Mo", "Tu"
                 except (ValueError, TypeError):
-                    day = dt_str[:3]
+                    day = dt_str[:2]
                 hi = fc.get("temperature", "?")
                 lo = fc.get("templow", "?")
-                parts.append(f"{day} \u2191{hi}\u00b0 \u2193{lo}\u00b0")
-            return {"icon": ICON_CALENDAR, "text": "  ".join(parts), "scrollSpeed": 50}
+                parts.append(f"{day} {hi}/{lo}")
+            payload = {
+                "icon": ICON_CALENDAR,
+                "text": " ".join(parts),
+                "textCase": 2,
+                "pushIcon": 2,
+                "lifetime": 0,
+                "scrollSpeed": cfg.get("scroll_speed", 80),
+            }
+            return self._apply_display_config(payload, cfg)
 
         return None
 
@@ -365,39 +466,97 @@ class AwtrixAppManager:
     # Simple template payload builders
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _build_temperature_payload(state, _cfg: dict) -> dict | None:
-        value = state.state
-        unit = state.attributes.get("unit_of_measurement", "°")
-        return {"icon": ICON_THERMOMETER, "text": f"{value}{unit}"}
-
-    @staticmethod
-    def _build_humidity_payload(state, _cfg: dict) -> dict | None:
-        value = state.state
-        unit = state.attributes.get("unit_of_measurement", "%")
-        return {"icon": ICON_HUMIDITY, "text": f"{value}{unit}"}
-
-    @staticmethod
-    def _build_battery_payload(state, _cfg: dict) -> dict | None:
+    def _build_temperature_payload(self, state, cfg: dict) -> dict | None:
         try:
-            pct = float(state.state)
+            val = round(float(state.state), 1)
+            text = f"{val}\u00b0"
+        except (ValueError, TypeError):
+            text = f"{state.state}\u00b0"
+
+        payload = {
+            "icon": ICON_THERMOMETER,
+            "text": text,
+            "pushIcon": 0,
+            "noScroll": True,
+            "textCase": 2,
+            "lifetime": 0,
+        }
+
+        # Color based on temp value
+        if not cfg.get("text_color"):
+            try:
+                t = float(state.state)
+                if t < 0:
+                    payload["color"] = [0, 100, 255]
+                elif t < 15:
+                    payload["color"] = [0, 200, 255]
+                elif t < 25:
+                    payload["color"] = [0, 255, 100]
+                else:
+                    payload["color"] = [255, 80, 0]
+            except (ValueError, TypeError):
+                pass
+
+        return self._apply_display_config(payload, cfg)
+
+    def _build_humidity_payload(self, state, cfg: dict) -> dict | None:
+        text = f"{state.state}%"
+        payload = {
+            "icon": ICON_HUMIDITY,
+            "text": text,
+            "pushIcon": 0,
+            "noScroll": True,
+            "textCase": 2,
+            "lifetime": 0,
+            "color": [0, 150, 255],  # blue default for humidity
+        }
+        return self._apply_display_config(payload, cfg)
+
+    def _build_battery_payload(self, state, cfg: dict) -> dict | None:
+        try:
+            pct = int(float(state.state))
         except (ValueError, TypeError):
             return None
+
         if pct > 50:
-            color = [0, 255, 0]
+            bar_color = [0, 255, 0]
         elif pct >= 20:
-            color = [255, 255, 0]
+            bar_color = [255, 255, 0]
         else:
-            color = [255, 0, 0]
-        return {"icon": ICON_BATTERY, "text": f"{int(pct)}%", "color": color}
+            bar_color = [255, 0, 0]
 
-    @staticmethod
-    def _build_countdown_payload(state, _cfg: dict) -> dict | None:
-        return {"icon": ICON_HOURGLASS, "text": state.state}
+        payload = {
+            "icon": ICON_BATTERY_FULL,
+            "text": f"{pct}%",
+            "pushIcon": 0,
+            "noScroll": True,
+            "progress": pct,
+            "progressC": bar_color,
+            "progressBC": [50, 50, 50],
+            "textCase": 2,
+            "lifetime": 0,
+        }
+        return self._apply_display_config(payload, cfg)
 
-    @staticmethod
-    def _build_text_payload(state, _cfg: dict) -> dict | None:
-        return {"icon": ICON_TEXT, "text": state.state}
+    def _build_countdown_payload(self, state, cfg: dict) -> dict | None:
+        payload = {
+            "icon": ICON_HOURGLASS,
+            "text": state.state,
+            "textCase": 2,
+            "pushIcon": 2,
+            "lifetime": 0,
+        }
+        return self._apply_display_config(payload, cfg)
+
+    def _build_text_payload(self, state, cfg: dict) -> dict | None:
+        payload = {
+            "icon": ICON_TEXT,
+            "text": state.state,
+            "textCase": 2,
+            "pushIcon": 2,
+            "lifetime": 0,
+        }
+        return self._apply_display_config(payload, cfg)
 
     # ------------------------------------------------------------------
     # Helpers

@@ -31,32 +31,51 @@ SETTING_UPPERCASE = "UPPERCASE"
 # App template keys
 CONF_APPS = "apps"
 
-# Default LaMetric weather icon mapping
-WEATHER_ICON_MAP: dict[str, str] = {
-    "sunny": "2283",
-    "clear-night": "2285",
-    "cloudy": "2283",
-    "partlycloudy": "2286",
-    "rainy": "2284",
-    "pouring": "2284",
-    "snowy": "2289",
-    "snowy-rainy": "2289",
-    "lightning": "2287",
-    "lightning-rainy": "2287",
-    "fog": "17056",
-    "hail": "2441",
-    "windy": "3363",
-    "exceptional": "2283",
+# Per-template display config keys
+CONF_TEXT_COLOR = "text_color"
+CONF_DURATION = "display_duration"
+CONF_SCROLL_SPEED = "scroll_speed"
+CONF_SHOW_CONDITION = "show_condition_text"
+CONF_WEATHER_OVERLAY = "weather_overlay"
+
+# Verified LaMetric icon IDs (user must download via AWTRIX web interface)
+ICON_THERMOMETER = 2056
+ICON_HUMIDITY = 51764
+ICON_BATTERY_FULL = 12832
+ICON_CALENDAR = 58153
+ICON_CLOCK = 6966
+ICON_HOURGLASS = 5765
+ICON_TEXT = 9533
+
+# Weather condition -> LaMetric icon ID mapping
+WEATHER_ICON_MAP: dict[str, int] = {
+    "sunny": 11201,
+    "clear-night": 53383,
+    "cloudy": 2283,
+    "partlycloudy": 11202,
+    "rainy": 72,
+    "pouring": 49299,
+    "snowy": 2289,
+    "snowy-rainy": 2289,
+    "lightning": 630,
+    "lightning-rainy": 630,
+    "fog": 17056,
+    "hail": 2441,
+    "windy": 3363,
+    "exceptional": 2283,
 }
 
-# Default LaMetric icons for non-weather templates
-ICON_THERMOMETER = "2056"
-ICON_HUMIDITY = "51764"
-ICON_BATTERY = "12832"
-ICON_CALENDAR = "58153"
-ICON_CLOCK = "6966"
-ICON_HOURGLASS = "5765"
-ICON_TEXT = "9533"
+# Weather overlay effects (AWTRIX overlay feature)
+WEATHER_OVERLAY_MAP: dict[str, str] = {
+    "rainy": "rain",
+    "pouring": "storm",
+    "snowy": "snow",
+    "snowy-rainy": "snow",
+    "lightning": "storm",
+    "lightning-rainy": "storm",
+    "hail": "storm",
+    "fog": "frost",
+}
 
 # Service names
 SERVICE_NOTIFY = "notify"

@@ -13,6 +13,8 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlowWit
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
+    ColorRGBSelector,
     EntitySelector,
     EntitySelectorConfig,
     NumberSelector,
@@ -29,12 +31,17 @@ from .client import AwtrixConnectionError, AwtrixHttpClient
 from .const import (
     CONF_APPS,
     CONF_CONNECTION_TYPE,
+    CONF_DURATION,
     CONF_HOST,
     CONF_MQTT_PREFIX,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_PORT,
+    CONF_SCROLL_SPEED,
+    CONF_SHOW_CONDITION,
+    CONF_TEXT_COLOR,
     CONF_USERNAME,
+    CONF_WEATHER_OVERLAY,
     CONNECTION_HTTP,
     CONNECTION_MQTT,
     DATE_FORMATS,
@@ -361,11 +368,25 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
             apps_cfg: dict[str, Any] = {}
             for name in self._enabled_apps:
                 cfg: dict[str, Any] = {"enabled": True}
+
+                # Per-template display options (all templates)
+                color = user_input.get(f"{name}_color")
+                if color:
+                    cfg[CONF_TEXT_COLOR] = color
+                duration = user_input.get(f"{name}_duration", 0)
+                if duration:
+                    cfg[CONF_DURATION] = int(duration)
+                scroll_speed = user_input.get(f"{name}_scroll_speed", 100)
+                if scroll_speed:
+                    cfg[CONF_SCROLL_SPEED] = int(scroll_speed)
+
                 if name == "weather":
                     cfg["entity_id"] = user_input.get("weather_entity_id", "")
                     cfg["modes"] = user_input.get("weather_modes", ["current"])
                     cfg["hourly_count"] = int(user_input.get("weather_hourly_count", 4))
                     cfg["daily_count"] = int(user_input.get("weather_daily_count", 5))
+                    cfg[CONF_SHOW_CONDITION] = bool(user_input.get("weather_show_condition", False))
+                    cfg[CONF_WEATHER_OVERLAY] = bool(user_input.get("weather_overlay", False))
                 elif name == "temperature":
                     cfg["entity_id"] = user_input.get("temperature_entity_id", "")
                 elif name == "humidity":
@@ -420,6 +441,31 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     default=prev.get("daily_count", 5),
                 )] = NumberSelector(NumberSelectorConfig(min=3, max=7, step=1, mode="box"))
 
+                schema_dict[vol.Optional(
+                    "weather_show_condition",
+                    default=prev.get(CONF_SHOW_CONDITION, False),
+                )] = BooleanSelector()
+
+                schema_dict[vol.Optional(
+                    "weather_overlay",
+                    default=prev.get(CONF_WEATHER_OVERLAY, False),
+                )] = BooleanSelector()
+
+                schema_dict[vol.Optional(
+                    "weather_color",
+                    default=prev.get(CONF_TEXT_COLOR),
+                )] = ColorRGBSelector()
+
+                schema_dict[vol.Optional(
+                    "weather_duration",
+                    default=prev.get(CONF_DURATION, 0),
+                )] = NumberSelector(NumberSelectorConfig(min=0, max=60, step=1, mode="box"))
+
+                schema_dict[vol.Optional(
+                    "weather_scroll_speed",
+                    default=prev.get(CONF_SCROLL_SPEED, 100),
+                )] = NumberSelector(NumberSelectorConfig(min=10, max=200, step=10, mode="slider"))
+
             elif name == "temperature":
                 schema_dict[vol.Optional(
                     "temperature_entity_id",
@@ -427,6 +473,21 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                 )] = EntitySelector(
                     EntitySelectorConfig(domain="sensor", device_class="temperature")
                 )
+
+                schema_dict[vol.Optional(
+                    "temperature_color",
+                    default=prev.get(CONF_TEXT_COLOR),
+                )] = ColorRGBSelector()
+
+                schema_dict[vol.Optional(
+                    "temperature_duration",
+                    default=prev.get(CONF_DURATION, 0),
+                )] = NumberSelector(NumberSelectorConfig(min=0, max=60, step=1, mode="box"))
+
+                schema_dict[vol.Optional(
+                    "temperature_scroll_speed",
+                    default=prev.get(CONF_SCROLL_SPEED, 100),
+                )] = NumberSelector(NumberSelectorConfig(min=10, max=200, step=10, mode="slider"))
 
             elif name == "humidity":
                 schema_dict[vol.Optional(
@@ -436,6 +497,21 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     EntitySelectorConfig(domain="sensor", device_class="humidity")
                 )
 
+                schema_dict[vol.Optional(
+                    "humidity_color",
+                    default=prev.get(CONF_TEXT_COLOR),
+                )] = ColorRGBSelector()
+
+                schema_dict[vol.Optional(
+                    "humidity_duration",
+                    default=prev.get(CONF_DURATION, 0),
+                )] = NumberSelector(NumberSelectorConfig(min=0, max=60, step=1, mode="box"))
+
+                schema_dict[vol.Optional(
+                    "humidity_scroll_speed",
+                    default=prev.get(CONF_SCROLL_SPEED, 100),
+                )] = NumberSelector(NumberSelectorConfig(min=10, max=200, step=10, mode="slider"))
+
             elif name == "battery":
                 schema_dict[vol.Optional(
                     "battery_entity_id",
@@ -443,6 +519,21 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                 )] = EntitySelector(
                     EntitySelectorConfig(domain="sensor", device_class="battery")
                 )
+
+                schema_dict[vol.Optional(
+                    "battery_color",
+                    default=prev.get(CONF_TEXT_COLOR),
+                )] = ColorRGBSelector()
+
+                schema_dict[vol.Optional(
+                    "battery_duration",
+                    default=prev.get(CONF_DURATION, 0),
+                )] = NumberSelector(NumberSelectorConfig(min=0, max=60, step=1, mode="box"))
+
+                schema_dict[vol.Optional(
+                    "battery_scroll_speed",
+                    default=prev.get(CONF_SCROLL_SPEED, 100),
+                )] = NumberSelector(NumberSelectorConfig(min=10, max=200, step=10, mode="slider"))
 
             elif name == "date":
                 schema_dict[vol.Optional(
@@ -458,6 +549,21 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     )
                 )
 
+                schema_dict[vol.Optional(
+                    "date_color",
+                    default=prev.get(CONF_TEXT_COLOR),
+                )] = ColorRGBSelector()
+
+                schema_dict[vol.Optional(
+                    "date_duration",
+                    default=prev.get(CONF_DURATION, 0),
+                )] = NumberSelector(NumberSelectorConfig(min=0, max=60, step=1, mode="box"))
+
+                schema_dict[vol.Optional(
+                    "date_scroll_speed",
+                    default=prev.get(CONF_SCROLL_SPEED, 100),
+                )] = NumberSelector(NumberSelectorConfig(min=10, max=200, step=10, mode="slider"))
+
             elif name == "time":
                 schema_dict[vol.Optional(
                     "time_format",
@@ -472,6 +578,21 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     )
                 )
 
+                schema_dict[vol.Optional(
+                    "time_color",
+                    default=prev.get(CONF_TEXT_COLOR),
+                )] = ColorRGBSelector()
+
+                schema_dict[vol.Optional(
+                    "time_duration",
+                    default=prev.get(CONF_DURATION, 0),
+                )] = NumberSelector(NumberSelectorConfig(min=0, max=60, step=1, mode="box"))
+
+                schema_dict[vol.Optional(
+                    "time_scroll_speed",
+                    default=prev.get(CONF_SCROLL_SPEED, 100),
+                )] = NumberSelector(NumberSelectorConfig(min=10, max=200, step=10, mode="slider"))
+
             elif name == "countdown":
                 schema_dict[vol.Optional(
                     "countdown_entity_id",
@@ -480,6 +601,21 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     EntitySelectorConfig(domain=["input_datetime", "timer"])
                 )
 
+                schema_dict[vol.Optional(
+                    "countdown_color",
+                    default=prev.get(CONF_TEXT_COLOR),
+                )] = ColorRGBSelector()
+
+                schema_dict[vol.Optional(
+                    "countdown_duration",
+                    default=prev.get(CONF_DURATION, 0),
+                )] = NumberSelector(NumberSelectorConfig(min=0, max=60, step=1, mode="box"))
+
+                schema_dict[vol.Optional(
+                    "countdown_scroll_speed",
+                    default=prev.get(CONF_SCROLL_SPEED, 100),
+                )] = NumberSelector(NumberSelectorConfig(min=10, max=200, step=10, mode="slider"))
+
             elif name == "text":
                 schema_dict[vol.Optional(
                     "text_entity_id",
@@ -487,6 +623,21 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                 )] = EntitySelector(
                     EntitySelectorConfig(domain="input_text")
                 )
+
+                schema_dict[vol.Optional(
+                    "text_color",
+                    default=prev.get(CONF_TEXT_COLOR),
+                )] = ColorRGBSelector()
+
+                schema_dict[vol.Optional(
+                    "text_duration",
+                    default=prev.get(CONF_DURATION, 0),
+                )] = NumberSelector(NumberSelectorConfig(min=0, max=60, step=1, mode="box"))
+
+                schema_dict[vol.Optional(
+                    "text_scroll_speed",
+                    default=prev.get(CONF_SCROLL_SPEED, 100),
+                )] = NumberSelector(NumberSelectorConfig(min=10, max=200, step=10, mode="slider"))
 
         return self.async_show_form(
             step_id="app_config", data_schema=vol.Schema(schema_dict)
