@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "AWTRIX 3 Setup",
+        "description": "Choose how to connect to your AWTRIX 3 device.",
+        "data": {
+          "connection_type": "Connection Type"
+        }
+      },
+      "http": {
+        "title": "HTTP Connection",
+        "description": "Enter the IP address or hostname of your AWTRIX 3 device.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
+      },
+      "mqtt": {
+        "title": "MQTT Connection",
+        "description": "Enter the MQTT topic prefix for your AWTRIX 3 device (e.g., awtrix_XXXXXX).",
+        "data": {
+          "mqtt_prefix": "MQTT Prefix"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to AWTRIX device. Check the IP address and port.",
+      "mqtt_not_configured": "MQTT integration is not configured. Please set up MQTT first.",
+      "unknown": "Unexpected error. Check the logs for details."
+    },
+    "abort": {
+      "already_configured": "This AWTRIX device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "AWTRIX 3 Options",
+        "data": {
+          "poll_interval": "Poll Interval"
+        }
+      }
+    }
+  }
+}
