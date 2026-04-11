@@ -325,7 +325,7 @@ class AwtrixHttpClient(AwtrixClient):
 
         # Upload to device (field name must be "data", not "file")
         _LOGGER.info("Icon %s: uploading as %s to %s/edit", icon_id, filename, base)
-        form = aiohttp.FormData()
+        form = aiohttp.FormData(quote_fields=False)
         form.add_field("data", icon_bytes, filename=filename, content_type=content_type)
         async with self._session.post(f"{base}/edit", data=form, timeout=self._timeout, auth=self._auth) as resp:
             if resp.status == 200:
