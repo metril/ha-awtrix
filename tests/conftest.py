@@ -9,6 +9,68 @@ from unittest.mock import AsyncMock, MagicMock
 pytest_plugins = []
 
 
+def _stub_voluptuous() -> None:
+    """Inject minimal voluptuous stub so __init__.py can be imported without the package."""
+    if "voluptuous" in sys.modules:
+        return
+
+    import functools
+
+    vol = types.ModuleType("voluptuous")
+
+    class _Schema:
+        def __init__(self, schema, *args, **kwargs):
+            self._schema = schema
+
+        def __call__(self, data):
+            return data
+
+    class _Required:
+        def __init__(self, key, *args, **kwargs):
+            self.key = key
+
+        def __hash__(self):
+            return hash(self.key)
+
+        def __eq__(self, other):
+            if isinstance(other, _Required):
+                return self.key == other.key
+            return self.key == other
+
+    class _Optional:
+        def __init__(self, key, *args, **kwargs):
+            self.key = key
+
+        def __hash__(self):
+            return hash(self.key)
+
+        def __eq__(self, other):
+            if isinstance(other, _Optional):
+                return self.key == other.key
+            return self.key == other
+
+    def _All(*validators):
+        return validators[-1] if validators else lambda x: x
+
+    def _Length(min=None, max=None):
+        return lambda x: x
+
+    def _Coerce(tp):
+        return tp
+
+    vol.Schema = _Schema
+    vol.Required = _Required
+    vol.Optional = _Optional
+    vol.All = _All
+    vol.Length = _Length
+    vol.Coerce = _Coerce
+
+    sys.modules["voluptuous"] = vol
+
+
+_stub_voluptuous()
+
+
 def _make_module(name: str, **attrs) -> types.ModuleType:
     mod = types.ModuleType(name)
     for k, v in attrs.items():
@@ -28,7 +90,7 @@ def _stub_homeassistant() -> None:
     ha._full_stub = True
 
     # homeassistant.core
-    ha_core = _make_module("homeassistant.core", HomeAssistant=MagicMock)
+    ha_core = _make_module("homeassistant.core", HomeAssistant=MagicMock, ServiceCall=MagicMock)
     ha.core = ha_core
 
     # homeassistant.config_entries

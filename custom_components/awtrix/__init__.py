@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .client import AwtrixHttpClient, AwtrixMqttClient
@@ -36,6 +39,50 @@ PLATFORMS = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+SERVICE_SCHEMAS = {
+    "notify": vol.Schema({
+        vol.Required("device_id"): str,
+        vol.Required("text"): str,
+        vol.Optional("icon"): str,
+        vol.Optional("color"): vol.All(list, vol.Length(min=3, max=3)),
+        vol.Optional("duration"): vol.Coerce(int),
+        vol.Optional("sound"): str,
+        vol.Optional("rtttl"): str,
+        vol.Optional("effect"): str,
+        vol.Optional("hold"): bool,
+        vol.Optional("rainbow"): bool,
+        vol.Optional("repeat"): vol.Coerce(int),
+        vol.Optional("bar"): list,
+        vol.Optional("line"): list,
+        vol.Optional("gradient"): list,
+    }),
+    "app_update": vol.Schema({
+        vol.Required("device_id"): str,
+        vol.Required("name"): str,
+        vol.Required("payload"): dict,
+    }),
+    "app_remove": vol.Schema({
+        vol.Required("device_id"): str,
+        vol.Required("name"): str,
+    }),
+    "play_rtttl": vol.Schema({
+        vol.Required("device_id"): str,
+        vol.Required("melody"): str,
+    }),
+    "update_settings": vol.Schema({
+        vol.Required("device_id"): str,
+        vol.Required("settings"): dict,
+    }),
+    "switch_app": vol.Schema({
+        vol.Required("device_id"): str,
+        vol.Required("name"): str,
+    }),
+    "sleep": vol.Schema({
+        vol.Required("device_id"): str,
+        vol.Required("seconds"): vol.Coerce(int),
+    }),
+}
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -70,6 +117,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
+    # Register services (once, not per entry)
+    if not hass.services.has_service(DOMAIN, "notify"):
+        _register_services(hass)
+
     return True
 
 
@@ -83,4 +134,89 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
+    # Unregister services if no entries left
+    if not hass.data.get(DOMAIN):
+        for service_name in SERVICE_SCHEMAS:
+            hass.services.async_remove(DOMAIN, service_name)
     return unload_ok
+
+
+def _get_client_for_device(hass: HomeAssistant, device_id: str):
+    """Resolve device_id to its AwtrixClient."""
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get(device_id)
+    if device is None:
+        raise HomeAssistantError(f"Device {device_id} not found")
+    for entry_id in device.config_entries:
+        if entry_id in hass.data.get(DOMAIN, {}):
+            return hass.data[DOMAIN][entry_id]["client"]
+    raise HomeAssistantError(f"No AWTRIX integration found for device {device_id}")
+
+
+def _register_services(hass: HomeAssistant) -> None:
+    """Register all AWTRIX services."""
+
+    async def handle_notify(call: ServiceCall) -> None:
+        client = _get_client_for_device(hass, call.data["device_id"])
+        payload = {k: v for k, v in call.data.items() if k != "device_id"}
+        try:
+            await client.send_notification(payload)
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_app_update(call: ServiceCall) -> None:
+        client = _get_client_for_device(hass, call.data["device_id"])
+        try:
+            await client.send_app(call.data["name"], call.data["payload"])
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_app_remove(call: ServiceCall) -> None:
+        client = _get_client_for_device(hass, call.data["device_id"])
+        try:
+            await client.remove_app(call.data["name"])
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_play_rtttl(call: ServiceCall) -> None:
+        client = _get_client_for_device(hass, call.data["device_id"])
+        try:
+            await client.play_rtttl(call.data["melody"])
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_update_settings(call: ServiceCall) -> None:
+        client = _get_client_for_device(hass, call.data["device_id"])
+        try:
+            await client.update_settings(call.data["settings"])
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_switch_app(call: ServiceCall) -> None:
+        client = _get_client_for_device(hass, call.data["device_id"])
+        try:
+            await client.switch_app(call.data["name"])
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def handle_sleep(call: ServiceCall) -> None:
+        client = _get_client_for_device(hass, call.data["device_id"])
+        try:
+            await client.sleep(call.data["seconds"])
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
+    handlers = {
+        "notify": handle_notify,
+        "app_update": handle_app_update,
+        "app_remove": handle_app_remove,
+        "play_rtttl": handle_play_rtttl,
+        "update_settings": handle_update_settings,
+        "switch_app": handle_switch_app,
+        "sleep": handle_sleep,
+    }
+
+    for service_name, handler in handlers.items():
+        hass.services.async_register(
+            DOMAIN, service_name, handler, schema=SERVICE_SCHEMAS[service_name]
+        )

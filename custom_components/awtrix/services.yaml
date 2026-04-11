@@ -1,0 +1,199 @@
+notify:
+  name: Send Notification
+  description: Send a temporary notification to an AWTRIX display.
+  fields:
+    device_id:
+      name: Device
+      description: The AWTRIX device to send the notification to.
+      required: true
+      selector:
+        device:
+          integration: awtrix
+    text:
+      name: Text
+      description: The notification text to display.
+      required: true
+      selector:
+        text:
+    icon:
+      name: Icon
+      description: LaMetric icon ID or base64 encoded image.
+      selector:
+        text:
+    color:
+      name: Color
+      description: Text color as RGB array.
+      selector:
+        color_rgb:
+    duration:
+      name: Duration
+      description: Display duration in seconds.
+      selector:
+        number:
+          min: 1
+          max: 300
+          unit_of_measurement: seconds
+    sound:
+      name: Sound
+      description: Sound preset name to play.
+      selector:
+        text:
+    rtttl:
+      name: RTTTL
+      description: RTTTL melody string to play.
+      selector:
+        text:
+    effect:
+      name: Effect
+      description: Background effect name.
+      selector:
+        text:
+    hold:
+      name: Hold
+      description: Keep notification displayed until dismissed.
+      selector:
+        boolean:
+    rainbow:
+      name: Rainbow
+      description: Display text in rainbow colors.
+      selector:
+        boolean:
+    repeat:
+      name: Repeat
+      description: Number of scroll iterations (-1 for infinite).
+      selector:
+        number:
+          min: -1
+          max: 100
+    bar:
+      name: Bar Chart
+      description: Bar chart data as list of integers.
+      selector:
+        object:
+    line:
+      name: Line Chart
+      description: Line chart data as list of integers.
+      selector:
+        object:
+    gradient:
+      name: Gradient
+      description: Gradient colors as list of hex strings.
+      selector:
+        object:
+
+app_update:
+  name: Update Custom App
+  description: Create or update a custom app on the AWTRIX display.
+  fields:
+    device_id:
+      name: Device
+      description: The AWTRIX device.
+      required: true
+      selector:
+        device:
+          integration: awtrix
+    name:
+      name: App Name
+      description: Unique name for the custom app.
+      required: true
+      selector:
+        text:
+    payload:
+      name: Payload
+      description: Full app JSON payload (text, icon, color, effect, etc.).
+      required: true
+      selector:
+        object:
+
+app_remove:
+  name: Remove Custom App
+  description: Remove a custom app from the AWTRIX display rotation.
+  fields:
+    device_id:
+      name: Device
+      description: The AWTRIX device.
+      required: true
+      selector:
+        device:
+          integration: awtrix
+    name:
+      name: App Name
+      description: Name of the custom app to remove.
+      required: true
+      selector:
+        text:
+
+play_rtttl:
+  name: Play RTTTL Melody
+  description: Play an RTTTL melody on the AWTRIX buzzer.
+  fields:
+    device_id:
+      name: Device
+      description: The AWTRIX device.
+      required: true
+      selector:
+        device:
+          integration: awtrix
+    melody:
+      name: Melody
+      description: RTTTL melody string.
+      required: true
+      selector:
+        text:
+
+update_settings:
+  name: Update Settings
+  description: Send arbitrary settings to the AWTRIX device.
+  fields:
+    device_id:
+      name: Device
+      description: The AWTRIX device.
+      required: true
+      selector:
+        device:
+          integration: awtrix
+    settings:
+      name: Settings
+      description: "Settings JSON object (e.g. {\"CEL\": true, \"UPPERCASE\": false})."
+      required: true
+      selector:
+        object:
+
+switch_app:
+  name: Switch App
+  description: Switch the AWTRIX display to a specific app.
+  fields:
+    device_id:
+      name: Device
+      description: The AWTRIX device.
+      required: true
+      selector:
+        device:
+          integration: awtrix
+    name:
+      name: App Name
+      description: "Name of the app to switch to (e.g. Time, Date, or custom app name)."
+      required: true
+      selector:
+        text:
+
+sleep:
+  name: Sleep
+  description: Put the AWTRIX device to sleep for a duration.
+  fields:
+    device_id:
+      name: Device
+      description: The AWTRIX device.
+      required: true
+      selector:
+        device:
+          integration: awtrix
+    seconds:
+      name: Duration
+      description: Sleep duration in seconds.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 86400
+          unit_of_measurement: seconds
