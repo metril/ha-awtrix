@@ -202,6 +202,15 @@ def _register_services(hass: HomeAssistant) -> None:
     async def handle_notify(call: ServiceCall) -> None:
         client = _get_client_for_device(hass, call.data["device_id"])
         payload = {k: v for k, v in call.data.items() if k != "device_id"}
+        # Convert icon string to int if it's a numeric LaMetric ID
+        icon = payload.get("icon")
+        if icon and isinstance(icon, str) and icon.isdigit():
+            icon_id = int(icon)
+            payload["icon"] = icon_id
+            try:
+                await client.ensure_icons([icon_id])
+            except Exception:
+                pass
         try:
             await client.send_notification(payload)
         except Exception as err:
@@ -209,8 +218,18 @@ def _register_services(hass: HomeAssistant) -> None:
 
     async def handle_app_update(call: ServiceCall) -> None:
         client = _get_client_for_device(hass, call.data["device_id"])
+        app_payload = call.data["payload"]
+        # Convert icon string to int if it's a numeric LaMetric ID
+        icon = app_payload.get("icon")
+        if icon and isinstance(icon, str) and icon.isdigit():
+            icon_id = int(icon)
+            app_payload["icon"] = icon_id
+            try:
+                await client.ensure_icons([icon_id])
+            except Exception:
+                pass
         try:
-            await client.send_app(call.data["name"], call.data["payload"])
+            await client.send_app(call.data["name"], app_payload)
         except Exception as err:
             raise HomeAssistantError(str(err)) from err
 
