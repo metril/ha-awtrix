@@ -316,11 +316,11 @@ _WEATHER_MODE_OPTIONS = [
 
 
 def _color_default(prev: dict) -> dict:
-    """Return default kwarg for ColorRGBSelector only if a previous value exists."""
+    """Return default kwarg for ColorRGBSelector."""
     color = prev.get(CONF_TEXT_COLOR)
     if color and isinstance(color, list) and len(color) == 3:
         return {"default": color}
-    return {}
+    return {"default": [255, 255, 255]}
 
 
 class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
