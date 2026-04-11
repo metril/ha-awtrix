@@ -17,8 +17,15 @@
         }
       },
       "mqtt": {
+        "title": "Select AWTRIX Device",
+        "description": "The following AWTRIX devices were discovered on your MQTT broker. Select one to add.",
+        "data": {
+          "mqtt_prefix": "Device"
+        }
+      },
+      "mqtt_manual": {
         "title": "MQTT Connection",
-        "description": "Enter the MQTT topic prefix for your AWTRIX 3 device (e.g., awtrix_XXXXXX).",
+        "description": "No AWTRIX devices were discovered automatically. Enter the MQTT topic prefix manually (e.g., awtrix_XXXXXX).",
         "data": {
           "mqtt_prefix": "MQTT Prefix"
         }
@@ -26,11 +33,12 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to AWTRIX device. Check the IP address and port.",
-      "mqtt_not_configured": "MQTT integration is not configured. Please set up MQTT first.",
+      "no_devices_found": "No AWTRIX devices found on MQTT. Enter the topic prefix manually.",
       "unknown": "Unexpected error. Check the logs for details."
     },
     "abort": {
-      "already_configured": "This AWTRIX device is already configured."
+      "already_configured": "This AWTRIX device is already configured.",
+      "mqtt_not_configured": "MQTT integration is not configured. Please set up MQTT first."
     }
   },
   "options": {

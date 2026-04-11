@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from typing import Any
 
@@ -63,11 +65,7 @@ STEP_HTTP_SCHEMA = vol.Schema(
     }
 )
 
-STEP_MQTT_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_MQTT_PREFIX): TextSelector(),
-    }
-)
+MQTT_DISCOVERY_TIMEOUT = 10  # seconds to listen for AWTRIX devices
 
 
 class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -75,6 +73,7 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._connection_type: str | None = None
+        self._discovered_devices: dict[str, dict] = {}  # prefix -> stats dict
 
     @staticmethod
     def async_get_options_flow(config_entry: ConfigEntry):
@@ -112,20 +111,111 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
         return self.async_show_form(step_id="http", data_schema=STEP_HTTP_SCHEMA, errors=errors)
 
+    async def _discover_mqtt_devices(self) -> dict[str, dict]:
+        """Subscribe to +/stats for a few seconds and collect AWTRIX devices."""
+        from homeassistant.components.mqtt import async_subscribe
+
+        discovered: dict[str, dict] = {}
+        event = asyncio.Event()
+
+        def _on_message(message):
+            try:
+                payload = json.loads(message.payload)
+            except (json.JSONDecodeError, TypeError):
+                return
+            # AWTRIX stats messages contain "uid" and "bat" fields
+            if "uid" not in payload:
+                return
+            # Extract prefix from topic: "{prefix}/stats" -> "{prefix}"
+            topic = message.topic
+            if topic.endswith("/stats"):
+                prefix = topic[: -len("/stats")]
+                discovered[prefix] = payload
+                event.set()
+
+        unsub = await async_subscribe(self.hass, "+/stats", _on_message)
+        try:
+            # Wait up to MQTT_DISCOVERY_TIMEOUT, but stop early once we find at least one
+            # and give a bit more time for others
+            try:
+                await asyncio.wait_for(event.wait(), timeout=MQTT_DISCOVERY_TIMEOUT)
+                # Found at least one — wait a couple more seconds for others
+                await asyncio.sleep(2)
+            except TimeoutError:
+                pass
+        finally:
+            unsub()
+
+        return discovered
+
     async def async_step_mqtt(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
+
+        # Check MQTT is configured
+        if not self.hass.config_entries.async_entries("mqtt"):
+            return self.async_abort(reason="mqtt_not_configured")
+
         if user_input is not None:
             prefix = user_input[CONF_MQTT_PREFIX]
-            if not self.hass.config_entries.async_entries("mqtt"):
-                errors["base"] = "mqtt_not_configured"
-            else:
-                await self.async_set_unique_id(prefix)
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=f"AWTRIX ({prefix})",
-                    data={CONF_CONNECTION_TYPE: CONNECTION_MQTT, CONF_MQTT_PREFIX: prefix},
-                )
-        return self.async_show_form(step_id="mqtt", data_schema=STEP_MQTT_SCHEMA, errors=errors)
+            # Look up UID from discovery results
+            stats = self._discovered_devices.get(prefix, {})
+            uid = stats.get("uid", prefix)
+
+            await self.async_set_unique_id(uid)
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(
+                title=f"AWTRIX ({uid})",
+                data={CONF_CONNECTION_TYPE: CONNECTION_MQTT, CONF_MQTT_PREFIX: prefix},
+            )
+
+        # Auto-discover AWTRIX devices on MQTT
+        self._discovered_devices = await self._discover_mqtt_devices()
+
+        if not self._discovered_devices:
+            errors["base"] = "no_devices_found"
+            # Fall back to manual entry
+            return self.async_show_form(
+                step_id="mqtt_manual",
+                data_schema=vol.Schema(
+                    {vol.Required(CONF_MQTT_PREFIX): TextSelector()}
+                ),
+                errors=errors,
+            )
+
+        # Build selection from discovered devices
+        options = []
+        for prefix, stats in self._discovered_devices.items():
+            uid = stats.get("uid", prefix)
+            ip = stats.get("ip_address", "")
+            label = f"{uid} ({ip})" if ip else uid
+            options.append({"label": label, "value": prefix})
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_MQTT_PREFIX): SelectSelector(
+                    SelectSelectorConfig(
+                        options=options,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(step_id="mqtt", data_schema=schema)
+
+    async def async_step_mqtt_manual(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Fallback manual MQTT prefix entry."""
+        if user_input is not None:
+            prefix = user_input[CONF_MQTT_PREFIX]
+            await self.async_set_unique_id(prefix)
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(
+                title=f"AWTRIX ({prefix})",
+                data={CONF_CONNECTION_TYPE: CONNECTION_MQTT, CONF_MQTT_PREFIX: prefix},
+            )
+        return self.async_show_form(
+            step_id="mqtt_manual",
+            data_schema=vol.Schema({vol.Required(CONF_MQTT_PREFIX): TextSelector()}),
+        )
 
 
 _ALL_APP_NAMES = [
