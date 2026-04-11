@@ -37,8 +37,27 @@
     "step": {
       "init": {
         "title": "AWTRIX 3 Options",
+        "description": "Configure polling and choose which app templates to enable.",
         "data": {
-          "poll_interval": "Poll Interval"
+          "poll_interval": "Poll Interval",
+          "enabled_apps": "Enabled App Templates"
+        }
+      },
+      "app_config": {
+        "title": "Configure App Templates",
+        "description": "Set the entity and options for each enabled app template.",
+        "data": {
+          "weather_entity_id": "Weather Entity",
+          "weather_modes": "Weather Display Modes",
+          "weather_hourly_count": "Hourly Forecast Count",
+          "weather_daily_count": "Daily Forecast Count",
+          "temperature_entity_id": "Temperature Sensor",
+          "humidity_entity_id": "Humidity Sensor",
+          "battery_entity_id": "Battery Sensor",
+          "date_format": "Date Format",
+          "time_format": "Time Format",
+          "countdown_entity_id": "Countdown Entity",
+          "text_entity_id": "Text Input Entity"
         }
       }
     }
