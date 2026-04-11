@@ -98,9 +98,9 @@ class AwtrixMoodlight(AwtrixEntity, LightEntity):
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Turn the moodlight off."""
+        """Turn the moodlight off by sending empty payload."""
         try:
-            await self.coordinator.client.set_moodlight({"brightness": 0})
+            await self.coordinator.client.set_moodlight({})
         except Exception as err:
             raise HomeAssistantError(
                 f"Failed to turn off AWTRIX moodlight: {err}"
