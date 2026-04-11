@@ -24,7 +24,9 @@
         "data": {
           "mqtt_prefix": "Discovered Device",
           "mqtt_prefix_manual": "Manual MQTT Prefix (overrides selection)",
-          "device_host": "Device IP Address (optional, for icon sync)"
+          "device_host": "Device IP Address (optional, for icon sync)",
+          "username": "Device Username (optional)",
+          "password": "Device Password (optional)"
         }
       }
     },

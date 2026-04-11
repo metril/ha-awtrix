@@ -188,7 +188,9 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             discovered[prefix] = {"uid": uid, "device_name": name}
             event.set()
 
-        unsub = await async_subscribe(self.hass, "homeassistant/+/+/config", _on_message)
+        # Subscribe to both 3-level and 4-level discovery topic formats
+        unsub1 = await async_subscribe(self.hass, "homeassistant/+/+/config", _on_message)
+        unsub2 = await async_subscribe(self.hass, "homeassistant/+/+/+/config", _on_message)
         try:
             try:
                 await asyncio.wait_for(event.wait(), timeout=MQTT_DISCOVERY_TIMEOUT)
@@ -196,7 +198,8 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             except TimeoutError:
                 pass
         finally:
-            unsub()
+            unsub1()
+            unsub2()
 
         return discovered
 
@@ -227,9 +230,15 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(uid)
             self._abort_if_unique_id_configured()
             device_host = user_input.get("device_host", "").strip()
+            username = user_input.get(CONF_USERNAME, "").strip()
+            password = user_input.get(CONF_PASSWORD, "").strip()
             entry_data = {CONF_CONNECTION_TYPE: CONNECTION_MQTT, CONF_MQTT_PREFIX: prefix}
             if device_host:
                 entry_data[CONF_DEVICE_HOST] = device_host
+            if username:
+                entry_data[CONF_USERNAME] = username
+            if password:
+                entry_data[CONF_PASSWORD] = password
             return self.async_create_entry(
                 title=f"AWTRIX ({uid})",
                 data=entry_data,
@@ -265,6 +274,10 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema_dict[vol.Optional("mqtt_prefix_manual", default="")] = TextSelector()
         schema_dict[vol.Optional("device_host", default="")] = TextSelector()
+        schema_dict[vol.Optional(CONF_USERNAME, default="")] = TextSelector()
+        schema_dict[vol.Optional(CONF_PASSWORD, default="")] = TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        )
 
         return vol.Schema(schema_dict)
 

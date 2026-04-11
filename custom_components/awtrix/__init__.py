@@ -116,7 +116,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device_host = entry.data.get(CONF_DEVICE_HOST)
     if connection_type == CONNECTION_MQTT and device_host:
         session = async_get_clientsession(hass)
-        icon_client = AwtrixHttpClient(session=session, host=device_host, port=80)
+        icon_client = AwtrixHttpClient(
+            session=session, host=device_host, port=80,
+            username=entry.data.get(CONF_USERNAME) or None,
+            password=entry.data.get(CONF_PASSWORD) or None,
+        )
 
     poll_interval = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     coordinator = AwtrixCoordinator(
