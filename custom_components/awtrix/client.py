@@ -66,8 +66,8 @@ class AwtrixClient(ABC):
         """Set or clear an indicator LED."""
 
     @abstractmethod
-    async def set_moodlight(self, payload: dict) -> None:
-        """Set mood light configuration."""
+    async def set_moodlight(self, payload: dict | None) -> None:
+        """Set mood light configuration. None disables moodlight."""
 
     @abstractmethod
     async def play_sound(self, sound: str) -> None:
@@ -237,9 +237,12 @@ class AwtrixHttpClient(AwtrixClient):
         payload = {"color": color} if color is not None else {}
         await self._request("POST", f"/indicator{index}", json=payload)
 
-    async def set_moodlight(self, payload: dict) -> None:
-        """POST /api/moodlight with the moodlight payload."""
-        await self._request("POST", "/moodlight", json=payload)
+    async def set_moodlight(self, payload: dict | None) -> None:
+        """POST /api/moodlight. None payload disables moodlight."""
+        if payload is None:
+            await self._request("POST", "/moodlight")
+        else:
+            await self._request("POST", "/moodlight", json=payload)
 
     async def play_sound(self, sound: str) -> None:
         """POST /api/sound with {sound: <name>}."""
@@ -406,9 +409,12 @@ class AwtrixMqttClient(AwtrixClient):
         payload = {"color": color} if color is not None else {}
         await self._publish(f"indicator{index}", json.dumps(payload))
 
-    async def set_moodlight(self, payload: dict) -> None:
-        """Set mood light configuration."""
-        await self._publish("moodlight", json.dumps(payload))
+    async def set_moodlight(self, payload: dict | None) -> None:
+        """Set mood light configuration. None disables moodlight."""
+        if payload is None:
+            await self._publish("moodlight")
+        else:
+            await self._publish("moodlight", json.dumps(payload))
 
     async def play_sound(self, sound: str) -> None:
         """Play a sound by name."""
