@@ -17,23 +17,18 @@
         }
       },
       "mqtt": {
-        "title": "Select AWTRIX Device",
-        "description": "The following AWTRIX devices were discovered on your MQTT broker. Select one to add.",
-        "data": {
-          "mqtt_prefix": "Device"
-        }
-      },
-      "mqtt_manual": {
         "title": "MQTT Connection",
-        "description": "No AWTRIX devices were discovered automatically. Enter the MQTT topic prefix manually (e.g., awtrix_XXXXXX).",
+        "description": "Select a discovered device or enter the MQTT topic prefix manually. Manual entry overrides the dropdown.",
         "data": {
-          "mqtt_prefix": "MQTT Prefix"
+          "mqtt_prefix": "Discovered Device",
+          "mqtt_prefix_manual": "Manual MQTT Prefix (overrides selection)"
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to AWTRIX device. Check the IP address and port.",
-      "no_devices_found": "No AWTRIX devices found on MQTT. Enter the topic prefix manually.",
+      "no_devices_found": "No AWTRIX devices found on MQTT. Enter the topic prefix manually below.",
+      "no_prefix": "Please select a device or enter a prefix manually.",
       "unknown": "Unexpected error. Check the logs for details."
     },
     "abort": {

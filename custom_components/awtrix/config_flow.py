@@ -111,113 +111,45 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
         return self.async_show_form(step_id="http", data_schema=STEP_HTTP_SCHEMA, errors=errors)
 
-    def _discover_from_device_registry(self) -> dict[str, dict]:
-        """Find AWTRIX devices already discovered by HA's MQTT integration."""
-        from homeassistant.helpers import device_registry as dr, entity_registry as er
+    async def _discover_mqtt_devices(self) -> dict[str, dict]:
+        """Listen for AWTRIX stats messages on MQTT to discover devices.
 
-        discovered: dict[str, dict] = {}
-        dev_reg = dr.async_get(self.hass)
-        ent_reg = er.async_get(self.hass)
-
-        for device in dev_reg.devices.values():
-            # Look for devices from the mqtt integration with "awtrix" in the name
-            is_mqtt_device = any(
-                entry_id
-                for entry_id in device.config_entries
-                if (entry := self.hass.config_entries.async_get_entry(entry_id))
-                and entry.domain == "mqtt"
-            )
-            if not is_mqtt_device:
-                continue
-
-            name_lower = (device.name or "").lower()
-            if "awtrix" not in name_lower:
-                continue
-
-            # Extract the MQTT prefix from entity topics
-            # MQTT entities have unique_ids that typically contain the prefix
-            prefix = None
-            for entity in er.async_entries_for_device(ent_reg, device.id):
-                # MQTT entity unique_ids often follow: {prefix}_{component}
-                uid = entity.unique_id or ""
-                if "awtrix" in uid.lower():
-                    # Try to extract prefix: take everything before the last underscore
-                    # that looks like an awtrix prefix (e.g., "awtrix_ABCDEF")
-                    for identifier in device.identifiers:
-                        if isinstance(identifier, tuple) and len(identifier) == 2:
-                            _, dev_id = identifier
-                            if isinstance(dev_id, str) and "awtrix" in dev_id.lower():
-                                prefix = dev_id
-                                break
-                    if prefix:
-                        break
-
-            # Also check connections for mac address to build prefix
-            if not prefix:
-                for conn_type, conn_id in device.connections:
-                    if conn_type == "mac":
-                        mac_suffix = conn_id.replace(":", "")[-6:]
-                        prefix = f"awtrix_{mac_suffix}"
-                        break
-
-            if not prefix:
-                # Use device name as fallback
-                prefix = name_lower.replace(" ", "_")
-
-            discovered[prefix] = {
-                "uid": prefix,
-                "ip_address": "",
-                "device_name": device.name or prefix,
-            }
-
-        return discovered
-
-    async def _discover_from_mqtt_topics(self) -> dict[str, dict]:
-        """Subscribe to MQTT and listen for AWTRIX stats messages."""
+        AWTRIX devices periodically publish JSON stats to {prefix}/stats.
+        We subscribe to +/stats and +/+/stats to catch single- and two-level
+        prefixes. The MQTT topic is the authoritative source for the prefix.
+        """
         from homeassistant.components.mqtt import async_subscribe
 
         discovered: dict[str, dict] = {}
         event = asyncio.Event()
 
         def _on_message(message):
+            topic = message.topic
+            if not topic.endswith("/stats"):
+                return
             try:
                 payload = json.loads(message.payload)
             except (json.JSONDecodeError, TypeError):
                 return
-            # AWTRIX stats messages contain "uid" and "bat" fields
             if not isinstance(payload, dict) or "uid" not in payload:
                 return
-            # Extract prefix from topic: "some/prefix/stats" -> "some/prefix"
-            topic = message.topic
-            if topic.endswith("/stats"):
-                prefix = topic[: -len("/stats")]
-                discovered[prefix] = payload
-                event.set()
+            prefix = topic[: -len("/stats")]
+            discovered[prefix] = payload
+            event.set()
 
-        # Use # wildcard to catch any topic depth ending in /stats
-        # Filter in callback to only keep AWTRIX stats messages
-        unsub = await async_subscribe(self.hass, "#", _on_message)
+        unsub1 = await async_subscribe(self.hass, "+/stats", _on_message)
+        unsub2 = await async_subscribe(self.hass, "+/+/stats", _on_message)
         try:
             try:
                 await asyncio.wait_for(event.wait(), timeout=MQTT_DISCOVERY_TIMEOUT)
-                # Found at least one — wait a couple more seconds for others
                 await asyncio.sleep(2)
             except TimeoutError:
                 pass
         finally:
-            unsub()
+            unsub1()
+            unsub2()
 
         return discovered
-
-    async def _discover_mqtt_devices(self) -> dict[str, dict]:
-        """Find AWTRIX devices via device registry first, then MQTT subscription."""
-        # Method 1: Check if HA already knows about AWTRIX devices via MQTT discovery
-        discovered = self._discover_from_device_registry()
-        if discovered:
-            return discovered
-
-        # Method 2: Listen on MQTT for stats messages
-        return await self._discover_from_mqtt_topics()
 
     async def async_step_mqtt(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -227,8 +159,19 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="mqtt_not_configured")
 
         if user_input is not None:
-            prefix = user_input[CONF_MQTT_PREFIX]
-            # Look up UID from discovery results
+            # Manual override takes priority over dropdown selection
+            manual = user_input.get("mqtt_prefix_manual", "").strip()
+            prefix = manual if manual else user_input.get(CONF_MQTT_PREFIX, "")
+
+            if not prefix:
+                errors["base"] = "no_prefix"
+                return self.async_show_form(
+                    step_id="mqtt",
+                    data_schema=self._build_mqtt_schema(),
+                    errors=errors,
+                )
+
+            # Look up UID from discovery results if available
             stats = self._discovered_devices.get(prefix, {})
             uid = stats.get("uid", prefix)
 
@@ -242,51 +185,34 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
         # Auto-discover AWTRIX devices on MQTT
         self._discovered_devices = await self._discover_mqtt_devices()
 
-        if not self._discovered_devices:
-            errors["base"] = "no_devices_found"
-            # Fall back to manual entry
-            return self.async_show_form(
-                step_id="mqtt_manual",
-                data_schema=vol.Schema(
-                    {vol.Required(CONF_MQTT_PREFIX): TextSelector()}
-                ),
-                errors=errors,
-            )
-
-        # Build selection from discovered devices
-        options = []
-        for prefix, stats in self._discovered_devices.items():
-            uid = stats.get("uid", prefix)
-            ip = stats.get("ip_address", "")
-            label = f"{uid} ({ip})" if ip else uid
-            options.append({"label": label, "value": prefix})
-
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_MQTT_PREFIX): SelectSelector(
-                    SelectSelectorConfig(
-                        options=options,
-                        mode=SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-            }
-        )
-        return self.async_show_form(step_id="mqtt", data_schema=schema)
-
-    async def async_step_mqtt_manual(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Fallback manual MQTT prefix entry."""
-        if user_input is not None:
-            prefix = user_input[CONF_MQTT_PREFIX]
-            await self.async_set_unique_id(prefix)
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(
-                title=f"AWTRIX ({prefix})",
-                data={CONF_CONNECTION_TYPE: CONNECTION_MQTT, CONF_MQTT_PREFIX: prefix},
-            )
         return self.async_show_form(
-            step_id="mqtt_manual",
-            data_schema=vol.Schema({vol.Required(CONF_MQTT_PREFIX): TextSelector()}),
+            step_id="mqtt",
+            data_schema=self._build_mqtt_schema(),
+            errors={"base": "no_devices_found"} if not self._discovered_devices else {},
         )
+
+    def _build_mqtt_schema(self) -> vol.Schema:
+        """Build the MQTT step schema with discovered devices + manual override."""
+        schema_dict: dict[vol.Marker, Any] = {}
+
+        if self._discovered_devices:
+            options = []
+            for prefix, stats in self._discovered_devices.items():
+                uid = stats.get("uid", prefix)
+                ip = stats.get("ip_address", "")
+                label = f"{uid} ({ip})" if ip else uid
+                options.append({"label": label, "value": prefix})
+
+            schema_dict[vol.Optional(CONF_MQTT_PREFIX)] = SelectSelector(
+                SelectSelectorConfig(
+                    options=options,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+
+        schema_dict[vol.Optional("mqtt_prefix_manual", default="")] = TextSelector()
+
+        return vol.Schema(schema_dict)
 
 
 _ALL_APP_NAMES = [
