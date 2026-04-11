@@ -171,6 +171,16 @@ def _stub_homeassistant() -> None:
     ha_er = _make_module("homeassistant.helpers.entity_registry")
     ha_helpers.entity_registry = ha_er
 
+    # homeassistant.util.dt
+    from datetime import datetime, timezone
+    ha_util = _make_module("homeassistant.util")
+    ha_util_dt = _make_module(
+        "homeassistant.util.dt",
+        now=lambda: datetime.now(tz=timezone.utc),
+    )
+    ha_util.dt = ha_util_dt
+    ha.util = ha_util
+
     # homeassistant.components (for mqtt)
     ha_components = _make_module("homeassistant.components")
     ha_mqtt = _make_module(
@@ -193,6 +203,8 @@ def _stub_homeassistant() -> None:
     sys.modules.setdefault("homeassistant.helpers.entity_registry", ha_er)
     sys.modules.setdefault("homeassistant.components", ha_components)
     sys.modules.setdefault("homeassistant.components.mqtt", ha_mqtt)
+    sys.modules.setdefault("homeassistant.util", ha_util)
+    sys.modules.setdefault("homeassistant.util.dt", ha_util_dt)
 
 
 _stub_homeassistant()

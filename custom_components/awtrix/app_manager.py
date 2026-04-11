@@ -6,6 +6,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+from homeassistant.util.dt import now as dt_now
+
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -151,11 +153,11 @@ class AwtrixAppManager:
     def _build_time_or_date_payload(self, app_name: str, cfg: dict) -> dict | None:
         if app_name == "date":
             fmt = cfg.get("format", next(iter(DATE_FORMATS)))
-            text = datetime.now().strftime(fmt)
+            text = dt_now().strftime(fmt)
             return {"icon": ICON_CALENDAR, "text": text}
         if app_name == "time":
             fmt = cfg.get("format", next(iter(TIME_FORMATS)))
-            text = datetime.now().strftime(fmt)
+            text = dt_now().strftime(fmt)
             return {"icon": ICON_CLOCK, "text": text}
         return None
 
@@ -183,10 +185,16 @@ class AwtrixAppManager:
                 if new_state is None:
                     return
                 for mode in entity_modes:
-                    p = self._build_weather_current_payload(new_state, cfg, mode)
-                    if p:
-                        app = f"weather_{mode}"
-                        self._hass.async_create_task(self._send_app(app, p))
+                    if mode == "current":
+                        p = self._build_weather_current_payload(new_state, cfg)
+                        if p:
+                            self._hass.async_create_task(
+                                self._send_app("weather_current", p)
+                            )
+                    elif mode == "today":
+                        self._hass.async_create_task(
+                            self._push_weather_today(entity_id, cfg, new_state)
+                        )
 
             unsub = async_track_state_change_event(
                 self._hass, entity_id, _on_weather_change
@@ -213,11 +221,13 @@ class AwtrixAppManager:
         state = self._hass.states.get(entity_id)
 
         for mode in modes:
-            if mode in ("current", "today"):
+            if mode == "current":
                 if state is not None:
-                    p = self._build_weather_current_payload(state, cfg, mode)
+                    p = self._build_weather_current_payload(state, cfg)
                     if p:
                         await self._send_app(f"weather_{mode}", p)
+            elif mode == "today":
+                await self._push_weather_today(entity_id, cfg, state)
             elif mode in ("hourly", "daily"):
                 await self._push_weather_forecast_mode(entity_id, cfg, mode)
 
@@ -226,6 +236,46 @@ class AwtrixAppManager:
     ) -> None:
         for mode in modes:
             await self._push_weather_forecast_mode(entity_id, cfg, mode)
+
+    async def _push_weather_today(
+        self, entity_id: str, cfg: dict, state
+    ) -> None:
+        """Fetch today's daily forecast and push the weather_today app."""
+        try:
+            result = await self._hass.services.async_call(
+                "weather",
+                "get_forecasts",
+                {"entity_id": entity_id, "type": "daily"},
+                blocking=True,
+                return_response=True,
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Failed to fetch daily forecast for %s (today mode)", entity_id)
+            result = None
+
+        forecasts: list[dict] = []
+        if result and isinstance(result, dict):
+            forecasts = result.get(entity_id, {}).get("forecast", [])
+
+        condition = state.state if state is not None else "unknown"
+        icon = self._get_weather_icon(condition, cfg)
+
+        if forecasts:
+            today = forecasts[0]
+            hi = today.get("temperature", "?")
+            lo = today.get("templow", "?")
+            unit = (state.attributes.get("temperature_unit", "°") if state is not None else "°")
+            detail = today.get("condition", condition).replace("-", " ").title()
+            text = f"\u2191{hi}{unit} \u2193{lo}{unit} {detail}"
+        elif state is not None:
+            temp = state.attributes.get("temperature", "")
+            unit = state.attributes.get("temperature_unit", "°")
+            text = f"{temp}{unit} {condition.replace('-', ' ').title()}"
+        else:
+            return
+
+        p = {"icon": icon, "text": text}
+        await self._send_app("weather_today", p)
 
     async def _push_weather_forecast_mode(
         self, entity_id: str, cfg: dict, mode: str
@@ -263,36 +313,15 @@ class AwtrixAppManager:
         return icon
 
     def _build_weather_current_payload(
-        self, state, cfg: dict, mode: str
+        self, state, cfg: dict
     ) -> dict | None:
-        if mode == "current":
-            condition = state.state
-            icon = self._get_weather_icon(condition, cfg)
-            temp = state.attributes.get("temperature", "")
-            unit = state.attributes.get("temperature_unit", "°")
-            text = f"{temp}{unit} {condition.replace('-', ' ').title()}"
-            return {"icon": icon, "text": text}
-
-        if mode == "today":
-            # today uses daily forecast already cached in attributes if available,
-            # or falls back to current condition
-            forecast = state.attributes.get("forecast", [])
-            condition = state.state
-            icon = self._get_weather_icon(condition, cfg)
-            if forecast:
-                today = forecast[0]
-                hi = today.get("temperature", "?")
-                lo = today.get("templow", "?")
-                unit = state.attributes.get("temperature_unit", "°")
-                detail = today.get("condition", condition).replace("-", " ").title()
-                text = f"\u2191{hi}{unit} \u2193{lo}{unit} {detail}"
-            else:
-                temp = state.attributes.get("temperature", "")
-                unit = state.attributes.get("temperature_unit", "°")
-                text = f"{temp}{unit} {condition.replace('-', ' ').title()}"
-            return {"icon": icon, "text": text}
-
-        return None
+        """Build payload for the 'current' weather mode."""
+        condition = state.state
+        icon = self._get_weather_icon(condition, cfg)
+        temp = state.attributes.get("temperature", "")
+        unit = state.attributes.get("temperature_unit", "°")
+        text = f"{temp}{unit} {condition.replace('-', ' ').title()}"
+        return {"icon": icon, "text": text}
 
     def _build_weather_forecast_payload(
         self, cfg: dict, mode: str, forecasts: list[dict]

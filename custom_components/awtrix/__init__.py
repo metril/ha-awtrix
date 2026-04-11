@@ -105,9 +105,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
     poll_interval = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
-    coordinator = AwtrixCoordinator(hass, entry, client, poll_interval=poll_interval)
+    coordinator = AwtrixCoordinator(
+        hass, entry, client,
+        poll_interval=poll_interval,
+        connection_type=connection_type,
+    )
 
     await coordinator.async_config_entry_first_refresh()
+
+    if connection_type == CONNECTION_MQTT:
+        await coordinator.async_start()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "coordinator": coordinator,
@@ -143,6 +150,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     app_manager = data.get("app_manager")
     if app_manager:
         await app_manager.async_stop()
+
+    coordinator = data.get("coordinator")
+    if coordinator is not None and hasattr(coordinator, "async_stop"):
+        await coordinator.async_stop()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
