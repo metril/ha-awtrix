@@ -164,18 +164,22 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             if not isinstance(payload, dict):
                 return
 
-            # Check if this config payload is for an AWTRIX device
-            device_info = payload.get("device", {})
+            # ArduinoHA uses abbreviated keys: "dev" not "device", "uniq_id" not "unique_id"
+            device_info = payload.get("dev") or payload.get("device") or {}
             device_name = device_info.get("name", "")
-            device_identifiers = str(device_info.get("identifiers", ""))
-            unique_id = payload.get("unique_id", "")
+            device_ids = str(device_info.get("ids") or device_info.get("identifiers", ""))
+            unique_id = payload.get("uniq_id") or payload.get("unique_id", "")
+            manufacturer = device_info.get("mf") or device_info.get("manufacturer", "")
 
-            haystack = f"{device_name} {device_identifiers} {unique_id}".lower()
-            if "awtrix" not in haystack:
+            # Check if this is an AWTRIX device
+            haystack = f"{device_name} {device_ids} {unique_id} {manufacturer}".lower()
+            if "awtrix" not in haystack and "blueforcer" not in haystack:
                 return
 
-            # Extract prefix from the tilde abbreviation field
+            # Extract prefix: try ~ field first, then use dev.name (which IS the MQTT prefix)
             prefix = payload.get("~", "").rstrip("/")
+            if not prefix:
+                prefix = device_name
             if not prefix:
                 return
 
@@ -183,9 +187,8 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             if prefix in discovered:
                 return
 
-            uid = unique_id or device_identifiers or prefix
-            name = device_name or uid
-            discovered[prefix] = {"uid": uid, "device_name": name}
+            name = device_name or prefix
+            discovered[prefix] = {"uid": device_ids or prefix, "device_name": name}
             event.set()
 
         # Subscribe to both 3-level and 4-level discovery topic formats
