@@ -13,7 +13,9 @@
         "description": "Enter the IP address or hostname of your AWTRIX 3 device.",
         "data": {
           "host": "Host",
-          "port": "Port"
+          "port": "Port",
+          "username": "Username (optional)",
+          "password": "Password (optional)"
         }
       },
       "mqtt": {

@@ -21,6 +21,8 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     SelectSelectorMode,
     TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from .client import AwtrixConnectionError, AwtrixHttpClient
@@ -29,8 +31,10 @@ from .const import (
     CONF_CONNECTION_TYPE,
     CONF_HOST,
     CONF_MQTT_PREFIX,
+    CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_PORT,
+    CONF_USERNAME,
     CONNECTION_HTTP,
     CONNECTION_MQTT,
     DATE_FORMATS,
@@ -62,6 +66,10 @@ STEP_HTTP_SCHEMA = vol.Schema(
         vol.Optional(CONF_PORT, default=DEFAULT_PORT): NumberSelector(
             NumberSelectorConfig(min=1, max=65535, step=1, mode="box")
         ),
+        vol.Optional(CONF_USERNAME, default=""): TextSelector(),
+        vol.Optional(CONF_PASSWORD, default=""): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
     }
 )
 
@@ -92,8 +100,16 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = user_input[CONF_HOST]
             port = int(user_input.get(CONF_PORT, DEFAULT_PORT))
+            username = user_input.get(CONF_USERNAME, "").strip()
+            password = user_input.get(CONF_PASSWORD, "").strip()
             session = async_get_clientsession(self.hass)
-            client = AwtrixHttpClient(session=session, host=host, port=port)
+            client = AwtrixHttpClient(
+                session=session,
+                host=host,
+                port=port,
+                username=username or None,
+                password=password or None,
+            )
             try:
                 stats = await client.get_stats()
             except AwtrixConnectionError:
@@ -105,18 +121,27 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
                 uid = stats.uid or f"awtrix_{host}"
                 await self.async_set_unique_id(uid)
                 self._abort_if_unique_id_configured()
+                entry_data: dict[str, Any] = {
+                    CONF_CONNECTION_TYPE: CONNECTION_HTTP,
+                    CONF_HOST: host,
+                    CONF_PORT: port,
+                }
+                if username:
+                    entry_data[CONF_USERNAME] = username
+                if password:
+                    entry_data[CONF_PASSWORD] = password
                 return self.async_create_entry(
                     title=f"AWTRIX ({host})",
-                    data={CONF_CONNECTION_TYPE: CONNECTION_HTTP, CONF_HOST: host, CONF_PORT: port},
+                    data=entry_data,
                 )
         return self.async_show_form(step_id="http", data_schema=STEP_HTTP_SCHEMA, errors=errors)
 
     async def _discover_mqtt_devices(self) -> dict[str, dict]:
-        """Listen for AWTRIX stats messages on MQTT to discover devices.
+        """Discover AWTRIX devices via standard HA MQTT discovery topics.
 
-        AWTRIX devices periodically publish JSON stats to {prefix}/stats.
-        We subscribe to +/stats and +/+/stats to catch single- and two-level
-        prefixes. The MQTT topic is the authoritative source for the prefix.
+        Subscribe to homeassistant/+/+/config and look for payloads whose
+        device.name, device.identifiers, or unique_id contain "awtrix".
+        The base topic prefix is extracted from the tilde (~) field.
         """
         from homeassistant.components.mqtt import async_subscribe
 
@@ -124,21 +149,38 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
         event = asyncio.Event()
 
         def _on_message(message):
-            topic = message.topic
-            if not topic.endswith("/stats"):
-                return
             try:
                 payload = json.loads(message.payload)
             except (json.JSONDecodeError, TypeError):
                 return
-            if not isinstance(payload, dict) or "uid" not in payload:
+            if not isinstance(payload, dict):
                 return
-            prefix = topic[: -len("/stats")]
-            discovered[prefix] = payload
+
+            # Check if this config payload is for an AWTRIX device
+            device_info = payload.get("device", {})
+            device_name = device_info.get("name", "")
+            device_identifiers = str(device_info.get("identifiers", ""))
+            unique_id = payload.get("unique_id", "")
+
+            haystack = f"{device_name} {device_identifiers} {unique_id}".lower()
+            if "awtrix" not in haystack:
+                return
+
+            # Extract prefix from the tilde abbreviation field
+            prefix = payload.get("~", "").rstrip("/")
+            if not prefix:
+                return
+
+            # Deduplicate: multiple components publish for the same device
+            if prefix in discovered:
+                return
+
+            uid = unique_id or device_identifiers or prefix
+            name = device_name or uid
+            discovered[prefix] = {"uid": uid, "device_name": name}
             event.set()
 
-        unsub1 = await async_subscribe(self.hass, "+/stats", _on_message)
-        unsub2 = await async_subscribe(self.hass, "+/+/stats", _on_message)
+        unsub = await async_subscribe(self.hass, "homeassistant/+/+/config", _on_message)
         try:
             try:
                 await asyncio.wait_for(event.wait(), timeout=MQTT_DISCOVERY_TIMEOUT)
@@ -146,8 +188,7 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             except TimeoutError:
                 pass
         finally:
-            unsub1()
-            unsub2()
+            unsub()
 
         return discovered
 
@@ -172,8 +213,8 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
             # Look up UID from discovery results if available
-            stats = self._discovered_devices.get(prefix, {})
-            uid = stats.get("uid", prefix)
+            info = self._discovered_devices.get(prefix, {})
+            uid = info.get("uid", prefix)
 
             await self.async_set_unique_id(uid)
             self._abort_if_unique_id_configured()
@@ -197,10 +238,10 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if self._discovered_devices:
             options = []
-            for prefix, stats in self._discovered_devices.items():
-                uid = stats.get("uid", prefix)
-                ip = stats.get("ip_address", "")
-                label = f"{uid} ({ip})" if ip else uid
+            for prefix, info in self._discovered_devices.items():
+                device_name = info.get("device_name", "")
+                uid = info.get("uid", prefix)
+                label = f"{device_name} ({uid})" if device_name and device_name != uid else uid
                 options.append({"label": label, "value": prefix})
 
             schema_dict[vol.Optional(CONF_MQTT_PREFIX)] = SelectSelector(

@@ -18,8 +18,10 @@ from .const import (
     CONF_CONNECTION_TYPE,
     CONF_HOST,
     CONF_MQTT_PREFIX,
+    CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_PORT,
+    CONF_USERNAME,
     CONNECTION_HTTP,
     CONNECTION_MQTT,
     DEFAULT_HTTP_TIMEOUT,
@@ -97,6 +99,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             host=entry.data[CONF_HOST],
             port=entry.data.get(CONF_PORT, DEFAULT_PORT),
             timeout=DEFAULT_HTTP_TIMEOUT,
+            username=entry.data.get(CONF_USERNAME) or None,
+            password=entry.data.get(CONF_PASSWORD) or None,
         )
     else:
         client = AwtrixMqttClient(

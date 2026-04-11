@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
 import aiohttp
 
 from .models import AwtrixStats
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class AwtrixConnectionError(Exception):
@@ -138,11 +141,17 @@ class AwtrixHttpClient(AwtrixClient):
         host: str,
         port: int = 80,
         timeout: int = 10,
+        username: str | None = None,
+        password: str | None = None,
     ) -> None:
         """Initialise the HTTP client."""
         self._session = session
         self._base_url = f"http://{host}:{port}/api"
         self._timeout = aiohttp.ClientTimeout(total=timeout)
+        if username and password:
+            self._auth: aiohttp.BasicAuth | None = aiohttp.BasicAuth(username, password)
+        else:
+            self._auth = None
 
     async def _request(self, method: str, path: str, **kwargs) -> _AwtrixResponse:
         """Perform an HTTP request and fully consume the response body.
@@ -154,7 +163,7 @@ class AwtrixHttpClient(AwtrixClient):
         url = f"{self._base_url}{path}"
         try:
             async with self._session.request(
-                method, url, timeout=self._timeout, **kwargs
+                method, url, timeout=self._timeout, auth=self._auth, **kwargs
             ) as response:
                 status = response.status
                 if status != 200:
@@ -275,8 +284,14 @@ class AwtrixMqttClient(AwtrixClient):
 
     async def _publish(self, topic: str, payload: str = "") -> None:
         """Publish a message to the given MQTT topic."""
-        import homeassistant.components.mqtt as _ha_mqtt
-        await _ha_mqtt.async_publish(self._hass, f"{self._prefix}/{topic}", payload)
+        full_topic = f"{self._prefix}/{topic}"
+        _LOGGER.debug(
+            "AWTRIX MQTT publish: %s -> %s",
+            full_topic,
+            payload[:200] if payload else "(empty)",
+        )
+        from homeassistant.components import mqtt
+        await mqtt.async_publish(self._hass, full_topic, payload, qos=0, retain=False)
 
     def process_stats_message(self, payload: str) -> None:
         """Parse a stats MQTT message and store the result."""
