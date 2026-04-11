@@ -60,6 +60,34 @@ class AwtrixAppManager:
 
     async def async_start(self) -> None:
         """Push initial state and register listeners for all enabled apps."""
+        # Collect and provision icons for enabled templates
+        icon_ids: set[int] = set()
+        for app_name, cfg in self._apps_config.items():
+            if not cfg.get("enabled"):
+                continue
+            if app_name == "weather":
+                icon_ids.update(WEATHER_ICON_MAP.values())
+            elif app_name == "temperature":
+                icon_ids.add(ICON_THERMOMETER)
+            elif app_name == "humidity":
+                icon_ids.add(ICON_HUMIDITY)
+            elif app_name == "battery":
+                icon_ids.add(ICON_BATTERY_FULL)
+            elif app_name == "date":
+                icon_ids.add(ICON_CALENDAR)
+            elif app_name == "time":
+                icon_ids.add(ICON_CLOCK)
+            elif app_name == "countdown":
+                icon_ids.add(ICON_HOURGLASS)
+            elif app_name == "text":
+                icon_ids.add(ICON_TEXT)
+
+        if icon_ids:
+            try:
+                await self._client.ensure_icons(sorted(icon_ids))
+            except Exception:
+                _LOGGER.warning("Icon provisioning failed, continuing without icons")
+
         for app_name, cfg in self._apps_config.items():
             if not cfg.get("enabled"):
                 continue

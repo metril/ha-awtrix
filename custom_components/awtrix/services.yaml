@@ -197,3 +197,15 @@ sleep:
           min: 1
           max: 86400
           unit_of_measurement: seconds
+
+sync_icons:
+  name: Sync Icons
+  description: Download and upload all required icons to the AWTRIX device from LaMetric.
+  fields:
+    device_id:
+      name: Device
+      description: The AWTRIX device to sync icons to.
+      required: true
+      selector:
+        device:
+          integration: awtrix

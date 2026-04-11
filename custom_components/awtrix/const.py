@@ -100,3 +100,12 @@ DATE_FORMATS = {
     "%b %d": "Short (Apr 10)",
     "%a %b %d": "Weekday (Fri Apr 10)",
 }
+
+LAMETRIC_ICON_URL = "https://developer.lametric.com/content/apps/icon_thumbs"
+SERVICE_SYNC_ICONS = "sync_icons"
+
+
+def get_all_icon_ids() -> list[int]:
+    ids = set(WEATHER_ICON_MAP.values())
+    ids.update([ICON_THERMOMETER, ICON_HUMIDITY, ICON_BATTERY_FULL, ICON_CALENDAR, ICON_CLOCK, ICON_HOURGLASS, ICON_TEXT])
+    return sorted(ids)

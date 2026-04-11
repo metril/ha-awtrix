@@ -105,6 +105,10 @@ class AwtrixClient(ABC):
     async def get_screen(self) -> bytes:
         """Return a screenshot of the current display."""
 
+    @abstractmethod
+    async def ensure_icons(self, icon_ids: list[int]) -> None:
+        """Ensure icons are available on the device."""
+
 
 class _AwtrixResponse:
     """Lightweight container for a consumed aiohttp response."""
@@ -146,6 +150,8 @@ class AwtrixHttpClient(AwtrixClient):
     ) -> None:
         """Initialise the HTTP client."""
         self._session = session
+        self._host = host
+        self._port = port
         self._base_url = f"http://{host}:{port}/api"
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         if username and password:
@@ -272,6 +278,48 @@ class AwtrixHttpClient(AwtrixClient):
         response = await self._request("GET", "/screen")
         return await response.read()
 
+    async def ensure_icons(self, icon_ids: list[int]) -> None:
+        for icon_id in icon_ids:
+            try:
+                await self._ensure_single_icon(icon_id)
+            except Exception:
+                _LOGGER.warning("Failed to provision icon %s", icon_id)
+
+    async def _ensure_single_icon(self, icon_id: int) -> None:
+        base = f"http://{self._host}:{self._port}"
+        # Check if already exists
+        for ext in ("gif", "jpg"):
+            try:
+                async with self._session.get(f"{base}/ICONS/{icon_id}.{ext}", timeout=self._timeout, auth=self._auth) as resp:
+                    if resp.status == 200:
+                        _LOGGER.debug("Icon %s already exists as .%s", icon_id, ext)
+                        return
+            except Exception:
+                pass
+
+        # Download from LaMetric
+        from .const import LAMETRIC_ICON_URL
+        dl_url = f"{LAMETRIC_ICON_URL}/{icon_id}"
+        dl_timeout = aiohttp.ClientTimeout(total=15)
+        async with self._session.get(dl_url, timeout=dl_timeout) as resp:
+            if resp.status != 200:
+                _LOGGER.warning("Failed to download icon %s from LaMetric: HTTP %s", icon_id, resp.status)
+                return
+            content_type = resp.content_type or ""
+            icon_bytes = await resp.read()
+
+        ext = "gif" if "gif" in content_type else "jpg"
+        filename = f"/ICONS/{icon_id}.{ext}"
+
+        # Upload to device
+        data = aiohttp.FormData()
+        data.add_field("file", icon_bytes, filename=filename, content_type=content_type)
+        async with self._session.post(f"{base}/edit", data=data, timeout=self._timeout, auth=self._auth) as resp:
+            if resp.status == 200:
+                _LOGGER.debug("Uploaded icon %s as %s", icon_id, filename)
+            else:
+                _LOGGER.warning("Failed to upload icon %s: HTTP %s", icon_id, resp.status)
+
 
 class AwtrixMqttClient(AwtrixClient):
     """AWTRIX3 client using MQTT."""
@@ -383,3 +431,6 @@ class AwtrixMqttClient(AwtrixClient):
     async def get_screen(self) -> bytes:
         """Not available via MQTT; returns empty bytes."""
         return b""
+
+    async def ensure_icons(self, icon_ids: list[int]) -> None:
+        pass

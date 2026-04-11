@@ -28,6 +28,8 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     DEFAULT_PORT,
     DOMAIN,
+    SERVICE_SYNC_ICONS,
+    get_all_icon_ids,
 )
 from .coordinator import AwtrixCoordinator
 
@@ -85,6 +87,7 @@ SERVICE_SCHEMAS = {
         vol.Required("device_id"): str,
         vol.Required("seconds"): vol.Coerce(int),
     }),
+    SERVICE_SYNC_ICONS: vol.Schema({vol.Required("device_id"): str}),
 }
 
 
@@ -234,6 +237,13 @@ def _register_services(hass: HomeAssistant) -> None:
         except Exception as err:
             raise HomeAssistantError(str(err)) from err
 
+    async def handle_sync_icons(call: ServiceCall) -> None:
+        client = _get_client_for_device(hass, call.data["device_id"])
+        try:
+            await client.ensure_icons(get_all_icon_ids())
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
     handlers = {
         "notify": handle_notify,
         "app_update": handle_app_update,
@@ -242,6 +252,7 @@ def _register_services(hass: HomeAssistant) -> None:
         "update_settings": handle_update_settings,
         "switch_app": handle_switch_app,
         "sleep": handle_sleep,
+        SERVICE_SYNC_ICONS: handle_sync_icons,
     }
 
     for service_name, handler in handlers.items():
