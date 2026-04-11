@@ -204,18 +204,17 @@ def _get_client_for_device(hass: HomeAssistant, device_id: str):
 def _register_services(hass: HomeAssistant) -> None:
     """Register all AWTRIX services."""
 
-    async def _provision_icon(device_id: str, icon_value) -> int | str:
-        """Convert icon to int if numeric, and ensure it's on the device."""
-        if icon_value and isinstance(icon_value, str) and icon_value.isdigit():
-            icon_id = int(icon_value)
+    async def _provision_icon(device_id: str, icon_value) -> str:
+        """Ensure icon is on the device. Icon must be a string for AWTRIX."""
+        icon_str = str(icon_value) if icon_value is not None else ""
+        if icon_str and icon_str.isdigit():
             data = _get_data_for_device(hass, device_id)
             ic = data.get("icon_client") or data["client"]
             try:
-                await ic.ensure_icons([icon_id])
+                await ic.ensure_icons([int(icon_str)])
             except Exception:
                 pass
-            return icon_id
-        return icon_value
+        return icon_str
 
     async def handle_notify(call: ServiceCall) -> None:
         client = _get_client_for_device(hass, call.data["device_id"])

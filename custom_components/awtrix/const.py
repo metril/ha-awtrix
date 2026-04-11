@@ -40,31 +40,31 @@ CONF_SCROLL_SPEED = "scroll_speed"
 CONF_SHOW_CONDITION = "show_condition_text"
 CONF_WEATHER_OVERLAY = "weather_overlay"
 
-# Verified LaMetric icon IDs (user must download via AWTRIX web interface)
-ICON_THERMOMETER = 2056
-ICON_HUMIDITY = 51764
-ICON_BATTERY_FULL = 12832
-ICON_CALENDAR = 58153
-ICON_CLOCK = 6966
-ICON_HOURGLASS = 5765
-ICON_TEXT = 9533
+# Verified LaMetric icon IDs as strings (AWTRIX expects string type for icon field)
+ICON_THERMOMETER = "2056"
+ICON_HUMIDITY = "51764"
+ICON_BATTERY_FULL = "12832"
+ICON_CALENDAR = "58153"
+ICON_CLOCK = "6966"
+ICON_HOURGLASS = "5765"
+ICON_TEXT = "9533"
 
-# Weather condition -> LaMetric icon ID mapping
-WEATHER_ICON_MAP: dict[str, int] = {
-    "sunny": 11201,
-    "clear-night": 53383,
-    "cloudy": 2283,
-    "partlycloudy": 11202,
-    "rainy": 72,
-    "pouring": 49299,
-    "snowy": 2289,
-    "snowy-rainy": 2289,
-    "lightning": 630,
-    "lightning-rainy": 630,
-    "fog": 17056,
-    "hail": 2441,
-    "windy": 3363,
-    "exceptional": 2283,
+# Weather condition -> LaMetric icon ID mapping (strings for AWTRIX payload)
+WEATHER_ICON_MAP: dict[str, str] = {
+    "sunny": "11201",
+    "clear-night": "53383",
+    "cloudy": "2283",
+    "partlycloudy": "11202",
+    "rainy": "72",
+    "pouring": "49299",
+    "snowy": "2289",
+    "snowy-rainy": "2289",
+    "lightning": "630",
+    "lightning-rainy": "630",
+    "fog": "17056",
+    "hail": "2441",
+    "windy": "3363",
+    "exceptional": "2283",
 }
 
 # Weather overlay effects (AWTRIX overlay feature)
@@ -108,6 +108,7 @@ SERVICE_SYNC_ICONS = "sync_icons"
 
 
 def get_all_icon_ids() -> list[int]:
-    ids = set(WEATHER_ICON_MAP.values())
-    ids.update([ICON_THERMOMETER, ICON_HUMIDITY, ICON_BATTERY_FULL, ICON_CALENDAR, ICON_CLOCK, ICON_HOURGLASS, ICON_TEXT])
-    return sorted(ids)
+    """Return all icon IDs as integers (for ensure_icons which downloads by int ID)."""
+    str_ids = set(WEATHER_ICON_MAP.values())
+    str_ids.update([ICON_THERMOMETER, ICON_HUMIDITY, ICON_BATTERY_FULL, ICON_CALENDAR, ICON_CLOCK, ICON_HOURGLASS, ICON_TEXT])
+    return sorted(int(i) for i in str_ids)
