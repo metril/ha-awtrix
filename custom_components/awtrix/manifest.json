@@ -1,13 +1,13 @@
 {
   "domain": "awtrix",
   "name": "AWTRIX 3",
+  "after_dependencies": ["mqtt"],
   "codeowners": ["@metril"],
   "config_flow": true,
   "dependencies": [],
-  "after_dependencies": ["mqtt"],
   "documentation": "https://github.com/metril/ha-awtrix",
-  "issue_tracker": "https://github.com/metril/ha-awtrix/issues",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/metril/ha-awtrix/issues",
   "requirements": [],
   "version": "1.0.0"
 }
