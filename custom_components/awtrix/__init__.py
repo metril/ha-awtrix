@@ -184,33 +184,44 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-def _get_client_for_device(hass: HomeAssistant, device_id: str):
-    """Resolve device_id to its AwtrixClient."""
+def _get_data_for_device(hass: HomeAssistant, device_id: str) -> dict:
+    """Resolve device_id to its hass.data dict (client, icon_client, coordinator)."""
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get(device_id)
     if device is None:
         raise HomeAssistantError(f"Device {device_id} not found")
     for entry_id in device.config_entries:
         if entry_id in hass.data.get(DOMAIN, {}):
-            return hass.data[DOMAIN][entry_id]["client"]
+            return hass.data[DOMAIN][entry_id]
     raise HomeAssistantError(f"No AWTRIX integration found for device {device_id}")
+
+
+def _get_client_for_device(hass: HomeAssistant, device_id: str):
+    """Resolve device_id to its AwtrixClient."""
+    return _get_data_for_device(hass, device_id)["client"]
 
 
 def _register_services(hass: HomeAssistant) -> None:
     """Register all AWTRIX services."""
 
+    async def _provision_icon(device_id: str, icon_value) -> int | str:
+        """Convert icon to int if numeric, and ensure it's on the device."""
+        if icon_value and isinstance(icon_value, str) and icon_value.isdigit():
+            icon_id = int(icon_value)
+            data = _get_data_for_device(hass, device_id)
+            ic = data.get("icon_client") or data["client"]
+            try:
+                await ic.ensure_icons([icon_id])
+            except Exception:
+                pass
+            return icon_id
+        return icon_value
+
     async def handle_notify(call: ServiceCall) -> None:
         client = _get_client_for_device(hass, call.data["device_id"])
         payload = {k: v for k, v in call.data.items() if k != "device_id"}
-        # Convert icon string to int if it's a numeric LaMetric ID
-        icon = payload.get("icon")
-        if icon and isinstance(icon, str) and icon.isdigit():
-            icon_id = int(icon)
-            payload["icon"] = icon_id
-            try:
-                await client.ensure_icons([icon_id])
-            except Exception:
-                pass
+        if "icon" in payload:
+            payload["icon"] = await _provision_icon(call.data["device_id"], payload["icon"])
         try:
             await client.send_notification(payload)
         except Exception as err:
@@ -219,15 +230,8 @@ def _register_services(hass: HomeAssistant) -> None:
     async def handle_app_update(call: ServiceCall) -> None:
         client = _get_client_for_device(hass, call.data["device_id"])
         app_payload = call.data["payload"]
-        # Convert icon string to int if it's a numeric LaMetric ID
-        icon = app_payload.get("icon")
-        if icon and isinstance(icon, str) and icon.isdigit():
-            icon_id = int(icon)
-            app_payload["icon"] = icon_id
-            try:
-                await client.ensure_icons([icon_id])
-            except Exception:
-                pass
+        if "icon" in app_payload:
+            app_payload["icon"] = await _provision_icon(call.data["device_id"], app_payload["icon"])
         try:
             await client.send_app(call.data["name"], app_payload)
         except Exception as err:
