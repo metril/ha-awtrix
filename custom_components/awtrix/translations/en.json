@@ -52,9 +52,15 @@
           "enabled_apps": "Enabled App Templates",
           "night_mode_brightness": "Night Mode Brightness (0 = display off)",
           "night_mode_schedule": "Enable Night Mode Schedule",
-          "night_mode_start": "Night Mode Start Time",
-          "night_mode_end": "Night Mode End Time",
           "presence_entity": "Presence Sensor (display on/off)"
+        }
+      },
+      "night_schedule": {
+        "title": "Night Mode Schedule",
+        "description": "Set the times for automatic night mode activation.",
+        "data": {
+          "night_mode_start": "Start Time",
+          "night_mode_end": "End Time"
         }
       },
       "app_config": {

@@ -377,14 +377,11 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
             self._enabled_apps = user_input.get("enabled_apps", [])
 
-            if self._enabled_apps:
-                return await self.async_step_app_config()
+            # If schedule enabled, go to time selection step first
+            if self._general_options.get(CONF_NIGHT_MODE_SCHEDULE, False):
+                return await self.async_step_night_schedule()
 
-            # No apps selected — save with empty apps dict
-            return self.async_create_entry(
-                title="",
-                data={**self._general_options, CONF_APPS: {}},
-            )
+            return await self._finalize_options()
 
         # Build current list of previously-enabled apps for default selection
         existing_apps_cfg: dict = options.get(CONF_APPS, {})
@@ -429,21 +426,54 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
         )] = BooleanSelector()
 
         schema_dict[vol.Optional(
-            CONF_NIGHT_MODE_START,
-            default=options.get(CONF_NIGHT_MODE_START, "22:00:00"),
-        )] = TimeSelector()
-
-        schema_dict[vol.Optional(
-            CONF_NIGHT_MODE_END,
-            default=options.get(CONF_NIGHT_MODE_END, "07:00:00"),
-        )] = TimeSelector()
-
-        schema_dict[vol.Optional(
             CONF_PRESENCE_ENTITY,
             default=options.get(CONF_PRESENCE_ENTITY, ""),
         )] = EntitySelector(EntitySelectorConfig(domain="binary_sensor"))
 
         return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_dict))
+
+    # ------------------------------------------------------------------
+    # Step 1b — night mode schedule times (only shown if toggle is on)
+    # ------------------------------------------------------------------
+
+    async def async_step_night_schedule(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is not None:
+            night_start = user_input.get(CONF_NIGHT_MODE_START, "")
+            if night_start:
+                self._general_options[CONF_NIGHT_MODE_START] = night_start
+            night_end = user_input.get(CONF_NIGHT_MODE_END, "")
+            if night_end:
+                self._general_options[CONF_NIGHT_MODE_END] = night_end
+            return await self._finalize_options()
+
+        options = self.config_entry.options
+        schema_dict: dict[vol.Marker, Any] = {
+            vol.Optional(
+                CONF_NIGHT_MODE_START,
+                default=options.get(CONF_NIGHT_MODE_START, "22:00:00"),
+            ): TimeSelector(),
+            vol.Optional(
+                CONF_NIGHT_MODE_END,
+                default=options.get(CONF_NIGHT_MODE_END, "07:00:00"),
+            ): TimeSelector(),
+        }
+        return self.async_show_form(
+            step_id="night_schedule",
+            data_schema=vol.Schema(schema_dict),
+        )
+
+    # ------------------------------------------------------------------
+    # Finalize options — route to app config or save
+    # ------------------------------------------------------------------
+
+    async def _finalize_options(self) -> FlowResult:
+        if self._enabled_apps:
+            return await self.async_step_app_config()
+        return self.async_create_entry(
+            title="", data={**self._general_options, CONF_APPS: {}}
+        )
 
     # ------------------------------------------------------------------
     # Step 2 — per-app configuration
