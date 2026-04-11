@@ -193,22 +193,20 @@ class AwtrixAppManager:
             fmt = cfg.get("format", next(iter(DATE_FORMATS)))
             text = dt_now().strftime(fmt)
             payload = {
-                "icon": ICON_CALENDAR,
                 "text": text,
-                "pushIcon": 0,
+                "center": True,
                 "noScroll": True,
                 "textCase": 2,
                 "lifetime": 0,
-                "color": [255, 200, 50],  # warm yellow
+                "color": [255, 200, 50],
             }
             return self._apply_display_config(payload, cfg)
         if app_name == "time":
             fmt = cfg.get("format", next(iter(TIME_FORMATS)))
             text = dt_now().strftime(fmt)
             payload = {
-                "icon": ICON_CLOCK,
                 "text": text,
-                "pushIcon": 0,
+                "center": True,
                 "noScroll": True,
                 "textCase": 2,
                 "lifetime": 0,
