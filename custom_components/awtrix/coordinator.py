@@ -30,7 +30,8 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         connection_type: str = "http",
     ) -> None:
         self._connection_type = connection_type
-        self._unsub_mqtt: Any = None
+        self._unsub_mqtt_stats: Any = None
+        self._unsub_mqtt_settings: Any = None
 
         # MQTT mode: no polling — data arrives via subscription
         interval = None if connection_type == CONNECTION_MQTT else timedelta(seconds=poll_interval)
@@ -87,18 +88,23 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
 
         from homeassistant.components.mqtt import async_subscribe
 
-        self._unsub_mqtt = await async_subscribe(
-            self.hass, f"{prefix}/stats", self._handle_mqtt_message
+        self._unsub_mqtt_stats = await async_subscribe(
+            self.hass, f"{prefix}/stats", self._handle_mqtt_stats
         )
-        _LOGGER.debug("Subscribed to MQTT topic %s/stats", prefix)
+        self._unsub_mqtt_settings = await async_subscribe(
+            self.hass, f"{prefix}/settings", self._handle_mqtt_settings
+        )
+        _LOGGER.debug("Subscribed to MQTT topics %s/stats and %s/settings", prefix, prefix)
 
     async def async_stop(self) -> None:
         """Unsubscribe from MQTT topics."""
-        if self._unsub_mqtt is not None:
-            self._unsub_mqtt()
-            self._unsub_mqtt = None
+        for unsub in (self._unsub_mqtt_stats, self._unsub_mqtt_settings):
+            if unsub is not None:
+                unsub()
+        self._unsub_mqtt_stats = None
+        self._unsub_mqtt_settings = None
 
-    async def _handle_mqtt_message(self, message) -> None:
+    async def _handle_mqtt_stats(self, message) -> None:
         """Handle an incoming MQTT stats message."""
         assert isinstance(self.client, AwtrixMqttClient)
         try:
@@ -106,14 +112,27 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         except Exception:  # noqa: BLE001
             _LOGGER.warning("Failed to parse MQTT stats message")
             return
+        await self._rebuild_data()
 
+    async def _handle_mqtt_settings(self, message) -> None:
+        """Handle an incoming MQTT settings message."""
+        assert isinstance(self.client, AwtrixMqttClient)
+        try:
+            self.client.process_settings_message(message.payload)
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning("Failed to parse MQTT settings message")
+            return
+        await self._rebuild_data()
+
+    async def _rebuild_data(self) -> None:
+        """Rebuild device data from the MQTT client's cached state."""
         stats = await self.client.get_stats()
         settings = await self.client.get_settings()
         data = AwtrixDeviceData(
             stats=stats,
             settings=settings,
-            effects=[],
-            transitions=[],
+            effects=self.data.effects if self.data else [],
+            transitions=self.data.transitions if self.data else [],
             connected=True,
         )
         self.async_set_updated_data(data)
