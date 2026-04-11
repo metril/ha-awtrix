@@ -21,6 +21,7 @@ from .const import (
     CONF_MQTT_PREFIX,
     CONF_NIGHT_MODE_BRIGHTNESS,
     CONF_NIGHT_MODE_END,
+    CONF_NIGHT_MODE_SCHEDULE,
     CONF_NIGHT_MODE_START,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
@@ -154,11 +155,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Night mode schedule and presence sensor listeners
+    schedule_enabled = entry.options.get(CONF_NIGHT_MODE_SCHEDULE, False)
     night_start = entry.options.get(CONF_NIGHT_MODE_START, "")
     night_end = entry.options.get(CONF_NIGHT_MODE_END, "")
     unsub_listeners = []
 
-    if night_start and night_end:
+    if schedule_enabled and night_start and night_end:
         from homeassistant.helpers.event import async_track_time_change
 
         start_parts = night_start.split(":")

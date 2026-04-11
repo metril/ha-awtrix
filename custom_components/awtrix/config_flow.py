@@ -25,6 +25,7 @@ from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
+    TimeSelector,
 )
 
 from .client import AwtrixConnectionError, AwtrixHttpClient
@@ -37,6 +38,7 @@ from .const import (
     CONF_MQTT_PREFIX,
     CONF_NIGHT_MODE_BRIGHTNESS,
     CONF_NIGHT_MODE_END,
+    CONF_NIGHT_MODE_SCHEDULE,
     CONF_NIGHT_MODE_START,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
@@ -362,10 +364,11 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                 )
 
             self._general_options[CONF_NIGHT_MODE_BRIGHTNESS] = user_input.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
-            night_start = user_input.get(CONF_NIGHT_MODE_START, "").strip()
+            self._general_options[CONF_NIGHT_MODE_SCHEDULE] = user_input.get(CONF_NIGHT_MODE_SCHEDULE, False)
+            night_start = user_input.get(CONF_NIGHT_MODE_START, "")
             if night_start:
                 self._general_options[CONF_NIGHT_MODE_START] = night_start
-            night_end = user_input.get(CONF_NIGHT_MODE_END, "").strip()
+            night_end = user_input.get(CONF_NIGHT_MODE_END, "")
             if night_end:
                 self._general_options[CONF_NIGHT_MODE_END] = night_end
             presence = user_input.get(CONF_PRESENCE_ENTITY, "").strip()
@@ -421,14 +424,19 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
         )] = NumberSelector(NumberSelectorConfig(min=0, max=255, step=1, mode="slider"))
 
         schema_dict[vol.Optional(
+            CONF_NIGHT_MODE_SCHEDULE,
+            default=options.get(CONF_NIGHT_MODE_SCHEDULE, False),
+        )] = BooleanSelector()
+
+        schema_dict[vol.Optional(
             CONF_NIGHT_MODE_START,
-            default=options.get(CONF_NIGHT_MODE_START, ""),
-        )] = TextSelector()
+            default=options.get(CONF_NIGHT_MODE_START, "22:00:00"),
+        )] = TimeSelector()
 
         schema_dict[vol.Optional(
             CONF_NIGHT_MODE_END,
-            default=options.get(CONF_NIGHT_MODE_END, ""),
-        )] = TextSelector()
+            default=options.get(CONF_NIGHT_MODE_END, "07:00:00"),
+        )] = TimeSelector()
 
         schema_dict[vol.Optional(
             CONF_PRESENCE_ENTITY,

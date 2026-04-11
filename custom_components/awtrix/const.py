@@ -23,6 +23,7 @@ DEFAULT_HTTP_TIMEOUT = 10  # seconds
 
 # Night mode config keys
 CONF_NIGHT_MODE_BRIGHTNESS = "night_mode_brightness"
+CONF_NIGHT_MODE_SCHEDULE = "night_mode_schedule"
 CONF_NIGHT_MODE_START = "night_mode_start"
 CONF_NIGHT_MODE_END = "night_mode_end"
 CONF_PRESENCE_ENTITY = "presence_entity"

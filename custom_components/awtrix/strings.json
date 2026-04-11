@@ -51,8 +51,9 @@
           "device_host": "Device IP Address (for icon sync)",
           "enabled_apps": "Enabled App Templates",
           "night_mode_brightness": "Night Mode Brightness (0 = display off)",
-          "night_mode_start": "Night Mode Start Time (HH:MM)",
-          "night_mode_end": "Night Mode End Time (HH:MM)",
+          "night_mode_schedule": "Enable Night Mode Schedule",
+          "night_mode_start": "Night Mode Start Time",
+          "night_mode_end": "Night Mode End Time",
           "presence_entity": "Presence Sensor (display on/off)"
         }
       },
