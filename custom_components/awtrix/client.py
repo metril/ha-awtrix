@@ -287,6 +287,7 @@ class AwtrixHttpClient(AwtrixClient):
 
     async def _ensure_single_icon(self, icon_id: int) -> None:
         base = f"http://{self._host}:{self._port}"
+        _LOGGER.info("Icon %s: checking existence on %s", icon_id, base)
 
         # Check if already exists via /list endpoint
         try:
@@ -297,33 +298,40 @@ class AwtrixHttpClient(AwtrixClient):
                     files = await resp.json()
                     existing = {f.get("name", "") for f in files}
                     if f"{icon_id}.gif" in existing or f"{icon_id}.jpg" in existing:
-                        _LOGGER.debug("Icon %s already on device", icon_id)
+                        _LOGGER.info("Icon %s: already on device, skipping", icon_id)
                         return
-        except Exception:
-            pass
+                    _LOGGER.info("Icon %s: not found in %d files on device", icon_id, len(files))
+                else:
+                    _LOGGER.info("Icon %s: /list returned HTTP %s", icon_id, resp.status)
+        except Exception as err:
+            _LOGGER.info("Icon %s: /list check failed: %s", icon_id, err)
 
         # Download from LaMetric
         from .const import LAMETRIC_ICON_URL
         dl_url = f"{LAMETRIC_ICON_URL}/{icon_id}"
+        _LOGGER.info("Icon %s: downloading from %s", icon_id, dl_url)
         dl_timeout = aiohttp.ClientTimeout(total=15)
         async with self._session.get(dl_url, timeout=dl_timeout) as resp:
             if resp.status != 200:
-                _LOGGER.warning("Failed to download icon %s from LaMetric: HTTP %s", icon_id, resp.status)
+                _LOGGER.warning("Icon %s: LaMetric download failed HTTP %s", icon_id, resp.status)
                 return
             content_type = resp.content_type or ""
             icon_bytes = await resp.read()
+            _LOGGER.info("Icon %s: downloaded %d bytes (%s)", icon_id, len(icon_bytes), content_type)
 
         ext = "gif" if "gif" in content_type else "jpg"
         filename = f"/ICONS/{icon_id}.{ext}"
 
         # Upload to device (field name must be "data", not "file")
+        _LOGGER.info("Icon %s: uploading as %s to %s/edit", icon_id, filename, base)
         form = aiohttp.FormData()
         form.add_field("data", icon_bytes, filename=filename, content_type=content_type)
         async with self._session.post(f"{base}/edit", data=form, timeout=self._timeout, auth=self._auth) as resp:
             if resp.status == 200:
-                _LOGGER.debug("Uploaded icon %s as %s", icon_id, filename)
+                _LOGGER.info("Icon %s: uploaded successfully", icon_id)
             else:
-                _LOGGER.warning("Failed to upload icon %s: HTTP %s", icon_id, resp.status)
+                body = await resp.text()
+                _LOGGER.warning("Icon %s: upload failed HTTP %s: %s", icon_id, resp.status, body[:200])
 
 
 class AwtrixMqttClient(AwtrixClient):
