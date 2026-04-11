@@ -280,7 +280,17 @@ def _register_services(hass: HomeAssistant) -> None:
         for entry_id in device.config_entries:
             if entry_id in hass.data.get(DOMAIN, {}):
                 data = hass.data[DOMAIN][entry_id]
-                c = data.get("icon_client") or data["client"]
+                c = data.get("icon_client")
+                if c is None:
+                    # Check if main client is HTTP (can upload icons)
+                    main_client = data["client"]
+                    if isinstance(main_client, AwtrixHttpClient):
+                        c = main_client
+                    else:
+                        raise HomeAssistantError(
+                            "No HTTP connection available for icon sync. "
+                            "Remove and re-add the integration with a Device IP Address in the MQTT setup."
+                        )
                 try:
                     await c.ensure_icons(get_all_icon_ids())
                 except Exception as err:

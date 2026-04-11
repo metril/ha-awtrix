@@ -345,6 +345,18 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
             if is_http and CONF_POLL_INTERVAL in user_input:
                 self._general_options[CONF_POLL_INTERVAL] = user_input[CONF_POLL_INTERVAL]
 
+            # MQTT: update device_host in config entry data if changed
+            if not is_http:
+                new_host = user_input.get(CONF_DEVICE_HOST, "").strip()
+                current_data = dict(self.config_entry.data)
+                if new_host:
+                    current_data[CONF_DEVICE_HOST] = new_host
+                elif CONF_DEVICE_HOST in current_data:
+                    del current_data[CONF_DEVICE_HOST]
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=current_data
+                )
+
             self._enabled_apps = user_input.get("enabled_apps", [])
 
             if self._enabled_apps:
@@ -370,6 +382,12 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
             )] = NumberSelector(
                 NumberSelectorConfig(min=10, max=300, step=5, unit_of_measurement="seconds")
             )
+        else:
+            # MQTT: allow setting/updating device host for icon provisioning
+            schema_dict[vol.Optional(
+                CONF_DEVICE_HOST,
+                default=self.config_entry.data.get(CONF_DEVICE_HOST, ""),
+            )] = TextSelector()
 
         schema_dict[vol.Optional("enabled_apps", default=default_enabled)] = SelectSelector(
             SelectSelectorConfig(

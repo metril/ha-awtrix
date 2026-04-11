@@ -48,6 +48,7 @@
         "description": "Configure polling and choose which app templates to enable.",
         "data": {
           "poll_interval": "Poll Interval",
+          "device_host": "Device IP Address (for icon sync)",
           "enabled_apps": "Enabled App Templates"
         }
       },
