@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, SETTING_AUTO_BRIGHTNESS
 from .coordinator import AwtrixCoordinator
 from .entity import AwtrixEntity
 
@@ -20,7 +20,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up AWTRIX switch entities from a config entry."""
     coordinator: AwtrixCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    async_add_entities([AwtrixPowerSwitch(coordinator, entry)])
+    async_add_entities([
+        AwtrixPowerSwitch(coordinator, entry),
+        AwtrixAutoBrightnessSwitch(coordinator, entry),
+    ])
 
 
 class AwtrixPowerSwitch(AwtrixEntity, SwitchEntity):
@@ -62,3 +65,43 @@ class AwtrixPowerSwitch(AwtrixEntity, SwitchEntity):
             ) from err
         self._is_on = False
         self.async_write_ha_state()
+
+
+class AwtrixAutoBrightnessSwitch(AwtrixEntity, SwitchEntity):
+    """Switch to control automatic brightness based on ambient light sensor."""
+
+    _attr_name = "Auto Brightness"
+    _attr_icon = "mdi:brightness-auto"
+
+    def __init__(self, coordinator: AwtrixCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        uid = entry.unique_id or entry.entry_id
+        self._attr_unique_id = f"{uid}_auto_brightness"
+
+    @property
+    def is_on(self) -> bool | None:
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.settings.get(SETTING_AUTO_BRIGHTNESS, False)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.update_settings({SETTING_AUTO_BRIGHTNESS: True})
+        except Exception as err:
+            raise HomeAssistantError(
+                f"Failed to enable auto brightness: {err}"
+            ) from err
+        if self.coordinator.data:
+            self.coordinator.data.settings[SETTING_AUTO_BRIGHTNESS] = True
+            self.coordinator.async_set_updated_data(self.coordinator.data)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        try:
+            await self.coordinator.client.update_settings({SETTING_AUTO_BRIGHTNESS: False})
+        except Exception as err:
+            raise HomeAssistantError(
+                f"Failed to disable auto brightness: {err}"
+            ) from err
+        if self.coordinator.data:
+            self.coordinator.data.settings[SETTING_AUTO_BRIGHTNESS] = False
+            self.coordinator.async_set_updated_data(self.coordinator.data)
