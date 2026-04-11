@@ -287,15 +287,20 @@ class AwtrixHttpClient(AwtrixClient):
 
     async def _ensure_single_icon(self, icon_id: int) -> None:
         base = f"http://{self._host}:{self._port}"
-        # Check if already exists
-        for ext in ("gif", "jpg"):
-            try:
-                async with self._session.get(f"{base}/ICONS/{icon_id}.{ext}", timeout=self._timeout, auth=self._auth) as resp:
-                    if resp.status == 200:
-                        _LOGGER.debug("Icon %s already exists as .%s", icon_id, ext)
+
+        # Check if already exists via /list endpoint
+        try:
+            async with self._session.get(
+                f"{base}/list?dir=/ICONS", timeout=self._timeout, auth=self._auth
+            ) as resp:
+                if resp.status == 200:
+                    files = await resp.json()
+                    existing = {f.get("name", "") for f in files}
+                    if f"{icon_id}.gif" in existing or f"{icon_id}.jpg" in existing:
+                        _LOGGER.debug("Icon %s already on device", icon_id)
                         return
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         # Download from LaMetric
         from .const import LAMETRIC_ICON_URL
@@ -311,10 +316,10 @@ class AwtrixHttpClient(AwtrixClient):
         ext = "gif" if "gif" in content_type else "jpg"
         filename = f"/ICONS/{icon_id}.{ext}"
 
-        # Upload to device
-        data = aiohttp.FormData()
-        data.add_field("file", icon_bytes, filename=filename, content_type=content_type)
-        async with self._session.post(f"{base}/edit", data=data, timeout=self._timeout, auth=self._auth) as resp:
+        # Upload to device (field name must be "data", not "file")
+        form = aiohttp.FormData()
+        form.add_field("data", icon_bytes, filename=filename, content_type=content_type)
+        async with self._session.post(f"{base}/edit", data=form, timeout=self._timeout, auth=self._auth) as resp:
             if resp.status == 200:
                 _LOGGER.debug("Uploaded icon %s as %s", icon_id, filename)
             else:
