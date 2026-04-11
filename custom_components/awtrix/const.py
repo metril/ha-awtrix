@@ -39,6 +39,12 @@ SETTING_UPPERCASE = "UPPERCASE"
 SETTING_AUTO_TRANSITION = "ATRANS"
 SETTING_MATRIX_POWER = "MATP"
 
+# Fixed transition effect list (TEFF 0-10)
+TRANSITIONS = [
+    "Random", "Slide", "Dim", "Zoom", "Rotate",
+    "Pixelate", "Curtain", "Ripple", "Blink", "Reload", "Fade",
+]
+
 # App template keys
 CONF_APPS = "apps"
 

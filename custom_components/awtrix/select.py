@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, SETTING_TRANSITION_EFFECT
+from .const import DOMAIN, SETTING_TRANSITION_EFFECT, TRANSITIONS
 from .coordinator import AwtrixCoordinator
 from .entity import AwtrixEntity
 
@@ -27,43 +27,31 @@ class AwtrixTransitionSelect(AwtrixEntity, SelectEntity):
 
     _attr_name = "Transition Effect"
     _attr_icon = "mdi:transition"
+    _attr_options = TRANSITIONS
 
     def __init__(self, coordinator: AwtrixCoordinator, entry: ConfigEntry) -> None:
-        """Initialize the transition select entity."""
         super().__init__(coordinator, entry)
         uid = entry.unique_id or entry.entry_id
         self._attr_unique_id = f"{uid}_transition_effect"
 
     @property
-    def options(self) -> list[str]:
-        """Return the list of available transition effects."""
-        if self.coordinator.data is None:
-            return []
-        return self.coordinator.data.transitions
-
-    @property
     def current_option(self) -> str | None:
-        """Return the currently selected transition effect name."""
         if self.coordinator.data is None:
             return None
         idx = self.coordinator.data.settings.get(SETTING_TRANSITION_EFFECT)
         if idx is None:
             return None
-        transitions = self.coordinator.data.transitions
         try:
-            return transitions[int(idx)]
+            return TRANSITIONS[int(idx)]
         except (IndexError, TypeError, ValueError):
             return None
 
     async def async_select_option(self, option: str) -> None:
-        """Change the selected transition effect."""
-        transitions = self.coordinator.data.transitions if self.coordinator.data else []
         try:
-            idx = transitions.index(option)
+            idx = TRANSITIONS.index(option)
         except ValueError:
             return
         await self.coordinator.client.update_settings({SETTING_TRANSITION_EFFECT: idx})
-        # Optimistic update
         if self.coordinator.data is not None:
             self.coordinator.data.settings[SETTING_TRANSITION_EFFECT] = idx
         self.async_write_ha_state()
