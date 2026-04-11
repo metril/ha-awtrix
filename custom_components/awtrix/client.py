@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
+from typing import Any
 
 import aiohttp
 
@@ -260,3 +262,108 @@ class AwtrixHttpClient(AwtrixClient):
         """GET /api/screen and return raw bytes."""
         response = await self._request("GET", "/screen")
         return await response.read()
+
+
+class AwtrixMqttClient(AwtrixClient):
+    """AWTRIX3 client using MQTT."""
+
+    def __init__(self, hass: Any, prefix: str) -> None:
+        self._hass = hass
+        self._prefix = prefix
+        self.last_stats: AwtrixStats | None = None
+        self._last_settings: dict | None = None
+
+    async def _publish(self, topic: str, payload: str = "") -> None:
+        """Publish a message to the given MQTT topic."""
+        import homeassistant.components.mqtt as _ha_mqtt
+        await _ha_mqtt.async_publish(self._hass, f"{self._prefix}/{topic}", payload)
+
+    def process_stats_message(self, payload: str) -> None:
+        """Parse a stats MQTT message and store the result."""
+        data = json.loads(payload)
+        self.last_stats = AwtrixStats.from_dict(data)
+
+    def process_settings_message(self, payload: str) -> None:
+        """Parse a settings MQTT message and store the result."""
+        self._last_settings = json.loads(payload)
+
+    async def get_stats(self) -> AwtrixStats:
+        """Return the last received stats, or an empty AwtrixStats."""
+        return self.last_stats if self.last_stats is not None else AwtrixStats()
+
+    async def get_settings(self) -> dict:
+        """Return the last received settings, or an empty dict."""
+        return self._last_settings if self._last_settings is not None else {}
+
+    async def get_effects(self) -> list[str]:
+        """Not available via MQTT; returns empty list."""
+        return []
+
+    async def get_transitions(self) -> list[str]:
+        """Not available via MQTT; returns empty list."""
+        return []
+
+    async def set_power(self, on: bool) -> None:
+        """Publish power command."""
+        await self._publish("power", json.dumps({"power": on}))
+
+    async def send_app(self, name: str, payload: dict) -> None:
+        """Publish custom app payload."""
+        await self._publish(f"custom/{name}", json.dumps(payload))
+
+    async def remove_app(self, name: str) -> None:
+        """Remove a custom app by sending an empty payload."""
+        await self._publish(f"custom/{name}", json.dumps({}))
+
+    async def send_notification(self, payload: dict) -> None:
+        """Publish a notification."""
+        await self._publish("notify", json.dumps(payload))
+
+    async def dismiss_notification(self) -> None:
+        """Dismiss the current notification."""
+        await self._publish("notify/dismiss", "")
+
+    async def set_indicator(self, index: int, color: list[int] | None) -> None:
+        """Set or clear an indicator LED."""
+        payload = {"color": color} if color is not None else {}
+        await self._publish(f"indicator{index}", json.dumps(payload))
+
+    async def set_moodlight(self, payload: dict) -> None:
+        """Set mood light configuration."""
+        await self._publish("moodlight", json.dumps(payload))
+
+    async def play_sound(self, sound: str) -> None:
+        """Play a sound by name."""
+        await self._publish("sound", json.dumps({"sound": sound}))
+
+    async def play_rtttl(self, melody: str) -> None:
+        """Play a melody in RTTTL format."""
+        await self._publish("rtttl", melody)
+
+    async def next_app(self) -> None:
+        """Switch to the next app."""
+        await self._publish("nextapp", "")
+
+    async def previous_app(self) -> None:
+        """Switch to the previous app."""
+        await self._publish("previousapp", "")
+
+    async def switch_app(self, name: str) -> None:
+        """Switch to a specific app by name."""
+        await self._publish("switch", json.dumps({"name": name}))
+
+    async def update_settings(self, settings: dict) -> None:
+        """Update device settings."""
+        await self._publish("settings", json.dumps(settings))
+
+    async def sleep(self, seconds: int) -> None:
+        """Put the device to sleep."""
+        await self._publish("sleep", json.dumps({"sleep": seconds}))
+
+    async def reboot(self) -> None:
+        """Reboot the device."""
+        await self._publish("reboot", "")
+
+    async def get_screen(self) -> bytes:
+        """Not available via MQTT; returns empty bytes."""
+        return b""
