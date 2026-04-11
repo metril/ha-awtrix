@@ -315,6 +315,14 @@ _WEATHER_MODE_OPTIONS = [
 ]
 
 
+def _color_default(prev: dict) -> dict:
+    """Return default kwarg for ColorRGBSelector only if a previous value exists."""
+    color = prev.get(CONF_TEXT_COLOR)
+    if color and isinstance(color, list) and len(color) == 3:
+        return {"default": color}
+    return {}
+
+
 class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
     """Two-step options flow: general settings → per-app configuration."""
 
@@ -475,7 +483,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
                 schema_dict[vol.Optional(
                     "weather_color",
-                    default=prev.get(CONF_TEXT_COLOR),
+                    **(_color_default(prev)),
                 )] = ColorRGBSelector()
 
                 schema_dict[vol.Optional(
@@ -498,7 +506,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
                 schema_dict[vol.Optional(
                     "temperature_color",
-                    default=prev.get(CONF_TEXT_COLOR),
+                    **(_color_default(prev)),
                 )] = ColorRGBSelector()
 
                 schema_dict[vol.Optional(
@@ -521,7 +529,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
                 schema_dict[vol.Optional(
                     "humidity_color",
-                    default=prev.get(CONF_TEXT_COLOR),
+                    **(_color_default(prev)),
                 )] = ColorRGBSelector()
 
                 schema_dict[vol.Optional(
@@ -544,7 +552,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
                 schema_dict[vol.Optional(
                     "battery_color",
-                    default=prev.get(CONF_TEXT_COLOR),
+                    **(_color_default(prev)),
                 )] = ColorRGBSelector()
 
                 schema_dict[vol.Optional(
@@ -573,7 +581,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
                 schema_dict[vol.Optional(
                     "date_color",
-                    default=prev.get(CONF_TEXT_COLOR),
+                    **(_color_default(prev)),
                 )] = ColorRGBSelector()
 
                 schema_dict[vol.Optional(
@@ -602,7 +610,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
                 schema_dict[vol.Optional(
                     "time_color",
-                    default=prev.get(CONF_TEXT_COLOR),
+                    **(_color_default(prev)),
                 )] = ColorRGBSelector()
 
                 schema_dict[vol.Optional(
@@ -625,7 +633,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
                 schema_dict[vol.Optional(
                     "countdown_color",
-                    default=prev.get(CONF_TEXT_COLOR),
+                    **(_color_default(prev)),
                 )] = ColorRGBSelector()
 
                 schema_dict[vol.Optional(
@@ -648,7 +656,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
                 schema_dict[vol.Optional(
                     "text_color",
-                    default=prev.get(CONF_TEXT_COLOR),
+                    **(_color_default(prev)),
                 )] = ColorRGBSelector()
 
                 schema_dict[vol.Optional(
