@@ -283,7 +283,7 @@ class AwtrixHttpClient(AwtrixClient):
             try:
                 await self._ensure_single_icon(icon_id)
             except Exception:
-                _LOGGER.warning("Failed to provision icon %s", icon_id)
+                _LOGGER.warning("Failed to provision icon %s", icon_id, exc_info=True)
 
     async def _ensure_single_icon(self, icon_id: int) -> None:
         base = f"http://{self._host}:{self._port}"
