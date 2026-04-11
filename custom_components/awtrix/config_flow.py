@@ -31,6 +31,7 @@ from .client import AwtrixConnectionError, AwtrixHttpClient
 from .const import (
     CONF_APPS,
     CONF_CONNECTION_TYPE,
+    CONF_DEVICE_HOST,
     CONF_DURATION,
     CONF_HOST,
     CONF_MQTT_PREFIX,
@@ -225,9 +226,13 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
 
             await self.async_set_unique_id(uid)
             self._abort_if_unique_id_configured()
+            device_host = user_input.get("device_host", "").strip()
+            entry_data = {CONF_CONNECTION_TYPE: CONNECTION_MQTT, CONF_MQTT_PREFIX: prefix}
+            if device_host:
+                entry_data[CONF_DEVICE_HOST] = device_host
             return self.async_create_entry(
                 title=f"AWTRIX ({uid})",
-                data={CONF_CONNECTION_TYPE: CONNECTION_MQTT, CONF_MQTT_PREFIX: prefix},
+                data=entry_data,
             )
 
         # Auto-discover AWTRIX devices on MQTT
@@ -259,6 +264,7 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         schema_dict[vol.Optional("mqtt_prefix_manual", default="")] = TextSelector()
+        schema_dict[vol.Optional("device_host", default="")] = TextSelector()
 
         return vol.Schema(schema_dict)
 

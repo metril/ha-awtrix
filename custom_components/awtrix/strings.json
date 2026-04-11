@@ -23,7 +23,8 @@
         "description": "Select a discovered device or enter the MQTT topic prefix manually. Manual entry overrides the dropdown.",
         "data": {
           "mqtt_prefix": "Discovered Device",
-          "mqtt_prefix_manual": "Manual MQTT Prefix (overrides selection)"
+          "mqtt_prefix_manual": "Manual MQTT Prefix (overrides selection)",
+          "device_host": "Device IP Address (optional, for icon sync)"
         }
       }
     },

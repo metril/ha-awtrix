@@ -16,6 +16,7 @@ from .client import AwtrixHttpClient, AwtrixMqttClient
 from .const import (
     CONF_APPS,
     CONF_CONNECTION_TYPE,
+    CONF_DEVICE_HOST,
     CONF_HOST,
     CONF_MQTT_PREFIX,
     CONF_PASSWORD,
@@ -111,6 +112,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             prefix=entry.data[CONF_MQTT_PREFIX],
         )
 
+    icon_client = None
+    device_host = entry.data.get(CONF_DEVICE_HOST)
+    if connection_type == CONNECTION_MQTT and device_host:
+        session = async_get_clientsession(hass)
+        icon_client = AwtrixHttpClient(session=session, host=device_host, port=80)
+
     poll_interval = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     coordinator = AwtrixCoordinator(
         hass, entry, client,
@@ -126,12 +133,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "coordinator": coordinator,
         "client": client,
+        "icon_client": icon_client,
     }
 
     apps_config = entry.options.get(CONF_APPS, {})
     if any(cfg.get("enabled") for cfg in apps_config.values()):
         from .app_manager import AwtrixAppManager
-        app_manager = AwtrixAppManager(hass, client, apps_config)
+        app_manager = AwtrixAppManager(hass, client, apps_config, icon_client=icon_client)
         hass.data[DOMAIN][entry.entry_id]["app_manager"] = app_manager
         await app_manager.async_start()
 
@@ -238,11 +246,21 @@ def _register_services(hass: HomeAssistant) -> None:
             raise HomeAssistantError(str(err)) from err
 
     async def handle_sync_icons(call: ServiceCall) -> None:
-        client = _get_client_for_device(hass, call.data["device_id"])
-        try:
-            await client.ensure_icons(get_all_icon_ids())
-        except Exception as err:
-            raise HomeAssistantError(str(err)) from err
+        device_id = call.data["device_id"]
+        dev_reg = dr.async_get(hass)
+        device = dev_reg.async_get(device_id)
+        if device is None:
+            raise HomeAssistantError(f"Device {device_id} not found")
+        for entry_id in device.config_entries:
+            if entry_id in hass.data.get(DOMAIN, {}):
+                data = hass.data[DOMAIN][entry_id]
+                c = data.get("icon_client") or data["client"]
+                try:
+                    await c.ensure_icons(get_all_icon_ids())
+                except Exception as err:
+                    raise HomeAssistantError(str(err)) from err
+                return
+        raise HomeAssistantError(f"No AWTRIX integration found for device {device_id}")
 
     handlers = {
         "notify": handle_notify,

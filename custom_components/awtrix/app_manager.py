@@ -47,10 +47,12 @@ class AwtrixAppManager:
         hass: HomeAssistant,
         client: AwtrixClient,
         apps_config: dict,
+        icon_client=None,
     ) -> None:
         self._hass = hass
         self._client = client
         self._apps_config = apps_config
+        self._icon_client = icon_client or client
         self._unsub_listeners: list[Any] = []
         self._active_apps: set[str] = set()
 
@@ -84,7 +86,7 @@ class AwtrixAppManager:
 
         if icon_ids:
             try:
-                await self._client.ensure_icons(sorted(icon_ids))
+                await self._icon_client.ensure_icons(sorted(icon_ids))
             except Exception:
                 _LOGGER.warning("Icon provisioning failed, continuing without icons")
 

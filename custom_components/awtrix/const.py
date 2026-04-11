@@ -7,6 +7,7 @@ CONF_CONNECTION_TYPE = "connection_type"
 CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_MQTT_PREFIX = "mqtt_prefix"
+CONF_DEVICE_HOST = "device_host"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 
