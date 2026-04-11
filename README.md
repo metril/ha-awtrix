@@ -14,6 +14,10 @@ A full-featured Home Assistant custom integration for [AWTRIX 3](https://github.
 
 ### HACS (Recommended)
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=metril&repository=ha-awtrix&category=integration)
+
+Or manually:
+
 1. Open HACS in your Home Assistant instance
 2. Click the three-dot menu and select **Custom repositories**
 3. Add `https://github.com/metril/ha-awtrix` with category **Integration**
