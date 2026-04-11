@@ -210,10 +210,11 @@ def _register_services(hass: HomeAssistant) -> None:
         if icon_str and icon_str.isdigit():
             data = _get_data_for_device(hass, device_id)
             ic = data.get("icon_client") or data["client"]
+            _LOGGER.debug("Provisioning icon %s via %s", icon_str, type(ic).__name__)
             try:
                 await ic.ensure_icons([int(icon_str)])
             except Exception:
-                pass
+                _LOGGER.warning("Failed to provision icon %s", icon_str, exc_info=True)
         return icon_str
 
     async def handle_notify(call: ServiceCall) -> None:

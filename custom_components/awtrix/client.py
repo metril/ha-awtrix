@@ -295,7 +295,8 @@ class AwtrixHttpClient(AwtrixClient):
                 f"{base}/list?dir=/ICONS", timeout=self._timeout, auth=self._auth
             ) as resp:
                 if resp.status == 200:
-                    files = await resp.json()
+                    # AWTRIX returns text/json instead of application/json
+                    files = await resp.json(content_type=None)
                     existing = {f.get("name", "") for f in files}
                     if f"{icon_id}.gif" in existing or f"{icon_id}.jpg" in existing:
                         _LOGGER.info("Icon %s: already on device, skipping", icon_id)
