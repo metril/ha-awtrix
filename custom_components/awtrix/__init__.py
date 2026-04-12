@@ -135,10 +135,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         http_client=icon_client,
     )
 
-    await coordinator.async_config_entry_first_refresh()
-
     if connection_type == CONNECTION_MQTT:
         await coordinator.async_start()
+
+    await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "coordinator": coordinator,
@@ -164,6 +164,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if schedule_enabled and night_start and night_end:
         from homeassistant.helpers.event import async_track_time_change
 
+        start_h = start_m = end_h = end_m = None
         try:
             start_parts = night_start.split(":")
             end_parts = night_end.split(":")
@@ -171,9 +172,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             end_h, end_m = int(end_parts[0]), int(end_parts[1])
         except (IndexError, ValueError):
             _LOGGER.warning("Invalid night mode time format: start=%r end=%r", night_start, night_end)
-            start_h = None
 
-        if start_h is not None:
+        if start_h is not None and end_h is not None:
             @callback
             def _night_start_cb(_now):
                 switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")

@@ -153,7 +153,8 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
     async def _handle_mqtt_current_app(self, message) -> None:
         """Handle currentApp message — plain string, not JSON."""
         if self.data and self.data.stats:
-            self.data.stats.current_app = message.payload
+            payload = message.payload
+            self.data.stats.current_app = payload if isinstance(payload, str) else payload.decode()
             self.async_set_updated_data(self.data)
 
     async def _handle_mqtt_effects(self, message) -> None:

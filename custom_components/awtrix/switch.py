@@ -169,7 +169,7 @@ class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
             await self.coordinator.client.update_settings({
                 SETTING_MATRIX_POWER: True,
                 SETTING_AUTO_TRANSITION: True,
-                SETTING_BRIGHTNESS: self._previous_brightness or 128,
+                SETTING_BRIGHTNESS: self._previous_brightness if self._previous_brightness is not None else 128,
             })
         except Exception as err:
             raise HomeAssistantError(f"Failed to deactivate night mode: {err}") from err
