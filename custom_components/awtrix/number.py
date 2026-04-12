@@ -112,9 +112,10 @@ class AwtrixNumber(AwtrixEntity, NumberEntity):
             raise HomeAssistantError(
                 f"Failed to set {self.entity_description.key}: {err}"
             ) from err
-        # Optimistic update
+        # Optimistic update — write to the same field native_value reads
         if self.coordinator.data is not None:
-            self.coordinator.data.settings[self.entity_description.setting_key] = int(
-                value
-            )
+            if self.entity_description.key == "brightness":
+                self.coordinator.data.stats.brightness = int(value)
+            else:
+                self.coordinator.data.settings[self.entity_description.setting_key] = int(value)
         self.async_write_ha_state()
