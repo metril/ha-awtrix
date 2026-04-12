@@ -365,12 +365,6 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
             self._general_options[CONF_NIGHT_MODE_BRIGHTNESS] = user_input.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
             self._general_options[CONF_NIGHT_MODE_SCHEDULE] = user_input.get(CONF_NIGHT_MODE_SCHEDULE, False)
-            night_start = user_input.get(CONF_NIGHT_MODE_START, "")
-            if night_start:
-                self._general_options[CONF_NIGHT_MODE_START] = night_start
-            night_end = user_input.get(CONF_NIGHT_MODE_END, "")
-            if night_end:
-                self._general_options[CONF_NIGHT_MODE_END] = night_end
             presence = user_input.get(CONF_PRESENCE_ENTITY, "").strip()
             if presence:
                 self._general_options[CONF_PRESENCE_ENTITY] = presence

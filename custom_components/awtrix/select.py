@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, SETTING_TRANSITION_EFFECT, TRANSITIONS
@@ -51,7 +52,10 @@ class AwtrixTransitionSelect(AwtrixEntity, SelectEntity):
             idx = TRANSITIONS.index(option)
         except ValueError:
             return
-        await self.coordinator.client.update_settings({SETTING_TRANSITION_EFFECT: idx})
+        try:
+            await self.coordinator.client.update_settings({SETTING_TRANSITION_EFFECT: idx})
+        except Exception as err:
+            raise HomeAssistantError(f"Failed to set transition: {err}") from err
         if self.coordinator.data is not None:
             self.coordinator.data.settings[SETTING_TRANSITION_EFFECT] = idx
         self.async_write_ha_state()

@@ -35,7 +35,6 @@ class AwtrixMoodlight(AwtrixEntity, LightEntity):
 
     _attr_name = "Moodlight"
     _attr_icon = "mdi:lightbulb"
-    _attr_color_mode = ColorMode.RGB
     _attr_supported_color_modes = {ColorMode.RGB, ColorMode.COLOR_TEMP}
     _attr_min_color_temp_kelvin = 1500
     _attr_max_color_temp_kelvin = 10000
@@ -45,10 +44,16 @@ class AwtrixMoodlight(AwtrixEntity, LightEntity):
         super().__init__(coordinator, entry)
         uid = entry.unique_id or entry.entry_id
         self._attr_unique_id = f"{uid}_moodlight"
+        self._color_mode: ColorMode = ColorMode.RGB
         self._is_on: bool = False
         self._brightness: int = 255
         self._rgb_color: tuple[int, int, int] = (255, 255, 255)
         self._color_temp_kelvin: int | None = None
+
+    @property
+    def color_mode(self) -> ColorMode:
+        """Return the current color mode."""
+        return self._color_mode
 
     @property
     def is_on(self) -> bool:

@@ -7,6 +7,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+import asyncio
+
 import aiohttp
 
 from .models import AwtrixStats
@@ -186,10 +188,8 @@ class AwtrixHttpClient(AwtrixClient):
                 return _AwtrixResponse(status, json_data, raw_bytes, method, url)
         except AwtrixApiError:
             raise
-        except aiohttp.ClientConnectorError as err:
-            raise AwtrixConnectionError(
-                f"Cannot connect to AWTRIX device at {url}"
-            ) from err
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise AwtrixConnectionError(f"Cannot connect to AWTRIX device at {url}") from err
 
     async def get_stats(self) -> AwtrixStats:
         """Return device statistics from /api/stats."""
@@ -351,13 +351,14 @@ class AwtrixMqttClient(AwtrixClient):
     async def _publish(self, topic: str, payload: str | None = None) -> None:
         """Publish a message to the given MQTT topic."""
         full_topic = f"{self._prefix}/{topic}"
+        send_payload = payload if payload is not None else ""
         _LOGGER.debug(
             "AWTRIX MQTT publish: topic=%s payload=%s",
             full_topic,
-            repr(payload[:200]) if payload else "(none)",
+            repr(send_payload[:200]) if send_payload else "(empty)",
         )
         from homeassistant.components.mqtt import async_publish
-        await async_publish(self._hass, full_topic, payload)
+        await async_publish(self._hass, full_topic, send_payload)
 
     def process_stats_message(self, payload: str) -> None:
         """Parse a stats MQTT message and store the result."""

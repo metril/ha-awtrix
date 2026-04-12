@@ -47,12 +47,13 @@ class AwtrixPowerSwitch(AwtrixEntity, SwitchEntity):
         super().__init__(coordinator, entry)
         uid = entry.unique_id or entry.entry_id
         self._attr_unique_id = f"{uid}_power"
-        self._is_on: bool = True
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return the current power state."""
-        return self._is_on
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.settings.get(SETTING_MATRIX_POWER, True)
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the device on."""
@@ -62,7 +63,8 @@ class AwtrixPowerSwitch(AwtrixEntity, SwitchEntity):
             raise HomeAssistantError(
                 f"Failed to turn on AWTRIX device: {err}"
             ) from err
-        self._is_on = True
+        if self.coordinator.data is not None:
+            self.coordinator.data.settings[SETTING_MATRIX_POWER] = True
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
@@ -73,7 +75,8 @@ class AwtrixPowerSwitch(AwtrixEntity, SwitchEntity):
             raise HomeAssistantError(
                 f"Failed to turn off AWTRIX device: {err}"
             ) from err
-        self._is_on = False
+        if self.coordinator.data is not None:
+            self.coordinator.data.settings[SETTING_MATRIX_POWER] = False
         self.async_write_ha_state()
 
 
@@ -145,10 +148,15 @@ class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
         night_brightness = self._entry.options.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
         try:
             if night_brightness == 0:
-                await self.coordinator.client.update_settings({SETTING_MATRIX_POWER: False})
+                await self.coordinator.client.update_settings({
+                    SETTING_MATRIX_POWER: False,
+                    SETTING_AUTO_TRANSITION: False,
+                })
             else:
-                await self.coordinator.client.update_settings({SETTING_BRIGHTNESS: night_brightness})
-            await self.coordinator.client.update_settings({SETTING_AUTO_TRANSITION: False})
+                await self.coordinator.client.update_settings({
+                    SETTING_BRIGHTNESS: night_brightness,
+                    SETTING_AUTO_TRANSITION: False,
+                })
             await self.coordinator.client.switch_app("Time")
         except Exception as err:
             raise HomeAssistantError(f"Failed to activate night mode: {err}") from err
@@ -158,11 +166,11 @@ class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         """Deactivate night mode."""
         try:
-            await self.coordinator.client.update_settings({SETTING_MATRIX_POWER: True})
-            await self.coordinator.client.update_settings(
-                {SETTING_BRIGHTNESS: self._previous_brightness or 128}
-            )
-            await self.coordinator.client.update_settings({SETTING_AUTO_TRANSITION: True})
+            await self.coordinator.client.update_settings({
+                SETTING_MATRIX_POWER: True,
+                SETTING_AUTO_TRANSITION: True,
+                SETTING_BRIGHTNESS: self._previous_brightness or 128,
+            })
         except Exception as err:
             raise HomeAssistantError(f"Failed to deactivate night mode: {err}") from err
         self._is_on = False

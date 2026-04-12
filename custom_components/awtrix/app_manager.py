@@ -384,10 +384,9 @@ class AwtrixAppManager:
     # Weather payload builders
     # ------------------------------------------------------------------
 
-    def _get_weather_icon(self, condition: str, cfg: dict) -> int:
+    def _get_weather_icon(self, condition: str, cfg: dict) -> str:
         overrides = cfg.get("icon_overrides", {})
-        icon = overrides.get(condition) or WEATHER_ICON_MAP.get(condition, 2283)
-        return icon
+        return str(overrides.get(condition) or WEATHER_ICON_MAP.get(condition, "2283"))
 
     def _build_weather_current_payload(
         self, state, cfg: dict
@@ -461,7 +460,6 @@ class AwtrixAppManager:
                 "textCase": 2,
                 "pushIcon": 2,
                 "lifetime": 0,
-                "scrollSpeed": cfg.get("scroll_speed", 80),
             }
             return self._apply_display_config(payload, cfg)
 
@@ -484,7 +482,6 @@ class AwtrixAppManager:
                 "textCase": 2,
                 "pushIcon": 2,
                 "lifetime": 0,
-                "scrollSpeed": cfg.get("scroll_speed", 80),
             }
             return self._apply_display_config(payload, cfg)
 

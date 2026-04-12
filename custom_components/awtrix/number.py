@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.components.number import NumberEntityDescription, NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, SETTING_BRIGHTNESS, SETTING_VOLUME, SETTING_APP_DURATION
@@ -102,9 +103,14 @@ class AwtrixNumber(AwtrixEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the setting on the device."""
-        await self.coordinator.client.update_settings(
-            {self.entity_description.setting_key: int(value)}
-        )
+        try:
+            await self.coordinator.client.update_settings(
+                {self.entity_description.setting_key: int(value)}
+            )
+        except Exception as err:
+            raise HomeAssistantError(
+                f"Failed to set {self.entity_description.key}: {err}"
+            ) from err
         # Optimistic update
         if self.coordinator.data is not None:
             self.coordinator.data.settings[self.entity_description.setting_key] = int(

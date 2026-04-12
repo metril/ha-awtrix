@@ -66,7 +66,7 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
                         connected=True,
                     )
                 except Exception:
-                    _LOGGER.debug("HTTP initial fetch failed, using MQTT cached data")
+                    _LOGGER.warning("HTTP initial fetch failed, using MQTT cached data", exc_info=True)
 
             # Fall back to MQTT cached data
             assert isinstance(self.client, AwtrixMqttClient)

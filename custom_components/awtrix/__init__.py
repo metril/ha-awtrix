@@ -241,7 +241,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     # Unregister services if no entries left
-    if not hass.data.get(DOMAIN):
+    if unload_ok and not hass.data.get(DOMAIN):
         for service_name in SERVICE_SCHEMAS:
             hass.services.async_remove(DOMAIN, service_name)
     return unload_ok
