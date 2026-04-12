@@ -28,8 +28,10 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         client: AwtrixClient,
         poll_interval: int = 30,
         connection_type: str = "http",
+        http_client: AwtrixClient | None = None,
     ) -> None:
         self._connection_type = connection_type
+        self._http_client = http_client
         self._mqtt_unsubs: list[Any] = []
 
         # MQTT mode: no polling — data arrives via subscription
@@ -47,7 +49,26 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
     async def _async_update_data(self) -> AwtrixDeviceData:
         """Fetch data from the AWTRIX device."""
         if self._connection_type == CONNECTION_MQTT:
-            # In MQTT mode we don't poll; return whatever the client has cached.
+            # If we have an HTTP client, use it for initial data (settings, effects, transitions)
+            if self._http_client is not None:
+                try:
+                    stats, settings, effects, transitions = await asyncio.gather(
+                        self._http_client.get_stats(),
+                        self._http_client.get_settings(),
+                        self._http_client.get_effects(),
+                        self._http_client.get_transitions(),
+                    )
+                    return AwtrixDeviceData(
+                        stats=stats,
+                        settings=settings,
+                        effects=effects,
+                        transitions=transitions,
+                        connected=True,
+                    )
+                except Exception:
+                    _LOGGER.debug("HTTP initial fetch failed, using MQTT cached data")
+
+            # Fall back to MQTT cached data
             assert isinstance(self.client, AwtrixMqttClient)
             stats = await self.client.get_stats()
             settings = await self.client.get_settings()

@@ -132,6 +132,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, entry, client,
         poll_interval=poll_interval,
         connection_type=connection_type,
+        http_client=icon_client,
     )
 
     await coordinator.async_config_entry_first_refresh()
