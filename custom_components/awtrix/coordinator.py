@@ -30,8 +30,7 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         connection_type: str = "http",
     ) -> None:
         self._connection_type = connection_type
-        self._unsub_mqtt_stats: Any = None
-        self._unsub_mqtt_settings: Any = None
+        self._mqtt_unsubs: list[Any] = []
 
         # MQTT mode: no polling — data arrives via subscription
         interval = None if connection_type == CONNECTION_MQTT else timedelta(seconds=poll_interval)
@@ -88,24 +87,26 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
 
         from homeassistant.components.mqtt import async_subscribe
 
-        self._unsub_mqtt_stats = await async_subscribe(
-            self.hass, f"{prefix}/stats", self._handle_mqtt_stats
-        )
-        self._unsub_mqtt_settings = await async_subscribe(
-            self.hass, f"{prefix}/settings", self._handle_mqtt_settings
-        )
-        _LOGGER.debug("Subscribed to MQTT topics %s/stats and %s/settings", prefix, prefix)
+        subs = [
+            (f"{prefix}/stats", self._handle_mqtt_stats),
+            (f"{prefix}/settings", self._handle_mqtt_settings),
+            (f"{prefix}/stats/currentApp", self._handle_mqtt_current_app),
+            (f"{prefix}/stats/effects", self._handle_mqtt_effects),
+            (f"{prefix}/stats/transitions", self._handle_mqtt_transitions),
+        ]
+        for topic, handler in subs:
+            self._mqtt_unsubs.append(await async_subscribe(self.hass, topic, handler))
+
+        _LOGGER.debug("Subscribed to %d MQTT topics for %s", len(subs), prefix)
 
     async def async_stop(self) -> None:
         """Unsubscribe from MQTT topics."""
-        for unsub in (self._unsub_mqtt_stats, self._unsub_mqtt_settings):
-            if unsub is not None:
-                unsub()
-        self._unsub_mqtt_stats = None
-        self._unsub_mqtt_settings = None
+        for unsub in self._mqtt_unsubs:
+            unsub()
+        self._mqtt_unsubs.clear()
 
     async def _handle_mqtt_stats(self, message) -> None:
-        """Handle an incoming MQTT stats message."""
+        """Handle stats message."""
         assert isinstance(self.client, AwtrixMqttClient)
         try:
             self.client.process_stats_message(message.payload)
@@ -115,7 +116,7 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         await self._rebuild_data()
 
     async def _handle_mqtt_settings(self, message) -> None:
-        """Handle an incoming MQTT settings message."""
+        """Handle settings message."""
         assert isinstance(self.client, AwtrixMqttClient)
         try:
             self.client.process_settings_message(message.payload)
@@ -123,6 +124,34 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
             _LOGGER.warning("Failed to parse MQTT settings message")
             return
         await self._rebuild_data()
+
+    async def _handle_mqtt_current_app(self, message) -> None:
+        """Handle currentApp message — plain string, not JSON."""
+        if self.data and self.data.stats:
+            self.data.stats.current_app = message.payload
+            self.async_set_updated_data(self.data)
+
+    async def _handle_mqtt_effects(self, message) -> None:
+        """Handle effects list message."""
+        import json
+        try:
+            effects = json.loads(message.payload)
+            if self.data and isinstance(effects, list):
+                self.data.effects = effects
+                self.async_set_updated_data(self.data)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    async def _handle_mqtt_transitions(self, message) -> None:
+        """Handle transitions list message."""
+        import json
+        try:
+            transitions = json.loads(message.payload)
+            if self.data and isinstance(transitions, list):
+                self.data.transitions = transitions
+                self.async_set_updated_data(self.data)
+        except (json.JSONDecodeError, TypeError):
+            pass
 
     async def _rebuild_data(self) -> None:
         """Rebuild device data from the MQTT client's cached state."""

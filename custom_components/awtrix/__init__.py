@@ -168,24 +168,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         @callback
         def _night_start_cb(_now):
-            night_bri = entry.options.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
-
-            async def _activate():
-                if night_bri == 0:
-                    await client.update_settings({"MATP": False})
-                else:
-                    await client.update_settings({"BRI": night_bri})
-                await client.update_settings({"ATRANS": False})
-                await client.switch_app("Time")
-
-            hass.async_create_task(_activate())
+            switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")
+            if switch:
+                hass.async_create_task(switch.async_turn_on())
 
         @callback
         def _night_end_cb(_now):
-            async def _deactivate():
-                await client.update_settings({"MATP": True, "ATRANS": True, "BRI": 128})
-
-            hass.async_create_task(_deactivate())
+            switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")
+            if switch:
+                hass.async_create_task(switch.async_turn_off())
 
         unsub_listeners.append(async_track_time_change(
             hass, _night_start_cb,
