@@ -177,7 +177,11 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
     async def _rebuild_data(self) -> None:
         """Rebuild device data from the MQTT client's cached state."""
         stats = await self.client.get_stats()
-        settings = await self.client.get_settings()
+        mqtt_settings = await self.client.get_settings()
+        # Preserve existing settings if MQTT hasn't received a settings message yet.
+        # Without this, the first MQTT stats message overwrites HTTP-fetched settings
+        # with an empty dict, causing all settings-backed entities to show 0/unknown.
+        settings = mqtt_settings if mqtt_settings else (self.data.settings if self.data else {})
         data = AwtrixDeviceData(
             stats=stats,
             settings=settings,
