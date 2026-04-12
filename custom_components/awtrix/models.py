@@ -23,25 +23,38 @@ class AwtrixStats:
     firmware: str = ""
     ip_address: str = ""
     current_app: str = ""
+    indicator1: bool = False
+    indicator2: bool = False
+    indicator3: bool = False
+    matrix: bool = True
+    messages: int = 0
 
     @classmethod
     def from_dict(cls, data: dict) -> AwtrixStats:
-        """Create from AWTRIX API response dict."""
+        """Create from AWTRIX API response dict.
+
+        Field names match the AWTRIX3 firmware (DisplayManager::getStats).
+        """
         return cls(
             uid=data.get("uid", ""),
             battery=data.get("bat", 0),
-            battery_raw=data.get("bat_raw", 0),
+            battery_raw=data.get("batRaw", 0),
             lux=data.get("lux", 0),
-            ldr_raw=data.get("ldr_raw", 0),
+            ldr_raw=data.get("ldrRaw", 0),
             ram=data.get("ram", 0),
             brightness=data.get("bri", 0),
             temperature=data.get("temp", 0.0),
             humidity=data.get("hum", 0.0),
             uptime=data.get("uptime", 0),
-            wifi_signal=data.get("wifi_signal", 0),
-            firmware=data.get("version", ""),
-            ip_address=data.get("ip_address", ""),
-            current_app=data.get("currentApp", ""),
+            wifi_signal=data.get("sig", 0),
+            firmware=data.get("ver", ""),
+            ip_address=data.get("ip", ""),
+            current_app=data.get("app", ""),
+            indicator1=data.get("indicator1", False),
+            indicator2=data.get("indicator2", False),
+            indicator3=data.get("indicator3", False),
+            matrix=data.get("matrix", True),
+            messages=data.get("messages", 0),
         )
 
 

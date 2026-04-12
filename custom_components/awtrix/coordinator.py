@@ -110,6 +110,10 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
 
         subs = [
             (f"{prefix}/stats", self._handle_mqtt_stats),
+            # AWTRIX firmware never publishes to {prefix}/settings — it only
+            # listens on that topic for incoming commands.  We keep the
+            # subscription for forward-compatibility in case a future firmware
+            # adds settings publication.
             (f"{prefix}/settings", self._handle_mqtt_settings),
             (f"{prefix}/stats/currentApp", self._handle_mqtt_current_app),
             (f"{prefix}/stats/effects", self._handle_mqtt_effects),
@@ -178,10 +182,14 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         """Rebuild device data from the MQTT client's cached state."""
         stats = await self.client.get_stats()
         mqtt_settings = await self.client.get_settings()
-        # Preserve existing settings if MQTT hasn't received a settings message yet.
-        # Without this, the first MQTT stats message overwrites HTTP-fetched settings
-        # with an empty dict, causing all settings-backed entities to show 0/unknown.
-        settings = mqtt_settings if mqtt_settings else (self.data.settings if self.data else {})
+        # Start with existing settings (from HTTP fetch or previous state),
+        # then overlay any MQTT-cached settings (from optimistic updates or
+        # actual MQTT messages).  AWTRIX firmware does not publish settings
+        # via MQTT, so mqtt_settings is typically empty or contains only
+        # keys we have optimistically set.
+        settings = dict(self.data.settings) if self.data and self.data.settings else {}
+        if mqtt_settings:
+            settings.update(mqtt_settings)
         data = AwtrixDeviceData(
             stats=stats,
             settings=settings,

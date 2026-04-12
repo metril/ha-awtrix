@@ -136,7 +136,11 @@ class AwtrixIndicatorLight(AwtrixEntity, LightEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return whether the indicator is on."""
+        """Return whether the indicator is on (from device stats when available)."""
+        if self.coordinator.data is not None:
+            return getattr(
+                self.coordinator.data.stats, f"indicator{self._index}", self._is_on
+            )
         return self._is_on
 
     @property
@@ -159,6 +163,8 @@ class AwtrixIndicatorLight(AwtrixEntity, LightEntity):
             ) from err
 
         self._is_on = True
+        if self.coordinator.data is not None:
+            setattr(self.coordinator.data.stats, f"indicator{self._index}", True)
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
@@ -171,4 +177,6 @@ class AwtrixIndicatorLight(AwtrixEntity, LightEntity):
             ) from err
 
         self._is_on = False
+        if self.coordinator.data is not None:
+            setattr(self.coordinator.data.stats, f"indicator{self._index}", False)
         self.async_write_ha_state()

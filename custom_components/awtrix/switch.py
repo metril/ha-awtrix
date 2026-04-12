@@ -50,10 +50,10 @@ class AwtrixPowerSwitch(AwtrixEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return the current power state."""
+        """Return the current power state from device stats."""
         if self.coordinator.data is None:
             return None
-        return self.coordinator.data.settings.get(SETTING_MATRIX_POWER, True)
+        return self.coordinator.data.stats.matrix
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the device on."""
@@ -64,7 +64,7 @@ class AwtrixPowerSwitch(AwtrixEntity, SwitchEntity):
                 f"Failed to turn on AWTRIX device: {err}"
             ) from err
         if self.coordinator.data is not None:
-            self.coordinator.data.settings[SETTING_MATRIX_POWER] = True
+            self.coordinator.data.stats.matrix = True
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
@@ -76,7 +76,7 @@ class AwtrixPowerSwitch(AwtrixEntity, SwitchEntity):
                 f"Failed to turn off AWTRIX device: {err}"
             ) from err
         if self.coordinator.data is not None:
-            self.coordinator.data.settings[SETTING_MATRIX_POWER] = False
+            self.coordinator.data.stats.matrix = False
         self.async_write_ha_state()
 
 

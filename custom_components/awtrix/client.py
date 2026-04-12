@@ -440,6 +440,10 @@ class AwtrixMqttClient(AwtrixClient):
     async def update_settings(self, settings: dict) -> None:
         """Update device settings."""
         await self._publish("settings", json.dumps(settings))
+        # Optimistic: merge into local cache so get_settings() stays consistent
+        if self._last_settings is None:
+            self._last_settings = {}
+        self._last_settings.update(settings)
 
     async def sleep(self, seconds: int) -> None:
         """Put the device to sleep."""
