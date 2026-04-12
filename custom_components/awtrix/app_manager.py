@@ -423,11 +423,13 @@ class AwtrixAppManager:
         if not cfg.get("text_color"):
             try:
                 t = float(temp)
-                if t < 32:  # freezing
+                is_f = "F" in str(unit)
+                cold, mild, warm = (32, 60, 80) if is_f else (0, 15, 27)
+                if t < cold:
                     payload["color"] = [0, 100, 255]
-                elif t < 60:
+                elif t < mild:
                     payload["color"] = [0, 200, 255]
-                elif t < 80:
+                elif t < warm:
                     payload["color"] = [0, 255, 100]
                 else:
                     payload["color"] = [255, 80, 0]

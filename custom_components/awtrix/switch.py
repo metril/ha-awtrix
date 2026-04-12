@@ -132,6 +132,7 @@ class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
         self._attr_unique_id = f"{uid}_night_mode"
         self._entry = entry
         self._previous_brightness: int | None = None
+        self._previous_auto_transition: bool | None = None
         self._is_on: bool = False
 
     @property
@@ -141,9 +142,10 @@ class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Activate night mode."""
-        # Save current brightness before changing it
+        # Save current state before changing it
         if self.coordinator.data:
             self._previous_brightness = self.coordinator.data.settings.get(SETTING_BRIGHTNESS)
+            self._previous_auto_transition = self.coordinator.data.settings.get(SETTING_AUTO_TRANSITION, True)
 
         night_brightness = self._entry.options.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
         try:
@@ -168,7 +170,7 @@ class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
         try:
             await self.coordinator.client.update_settings({
                 SETTING_MATRIX_POWER: True,
-                SETTING_AUTO_TRANSITION: True,
+                SETTING_AUTO_TRANSITION: self._previous_auto_transition if self._previous_auto_transition is not None else True,
                 SETTING_BRIGHTNESS: self._previous_brightness if self._previous_brightness is not None else 128,
             })
         except Exception as err:
