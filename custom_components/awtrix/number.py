@@ -37,6 +37,7 @@ NUMBERS: tuple[AwtrixNumberDescription, ...] = (
         native_max_value=255,
         native_step=1,
         setting_key=SETTING_BRIGHTNESS,
+        value_fn=lambda data, _key: data.stats.brightness,
     ),
     AwtrixNumberDescription(
         key="volume",
