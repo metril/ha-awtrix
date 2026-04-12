@@ -449,7 +449,8 @@ class AwtrixAppManager:
                 dt_str = fc.get("datetime", "")
                 try:
                     dt = datetime.fromisoformat(dt_str)
-                    hour = dt.strftime("%-I%p")[:-1]  # e.g. "2P", "3P"
+                    h = dt.hour % 12 or 12
+                    hour = f"{h}{'P' if dt.hour >= 12 else 'A'}"
                 except (ValueError, TypeError):
                     hour = dt_str[:5]
                 temp = fc.get("temperature", "?")

@@ -164,29 +164,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if schedule_enabled and night_start and night_end:
         from homeassistant.helpers.event import async_track_time_change
 
-        start_parts = night_start.split(":")
-        end_parts = night_end.split(":")
+        try:
+            start_parts = night_start.split(":")
+            end_parts = night_end.split(":")
+            start_h, start_m = int(start_parts[0]), int(start_parts[1])
+            end_h, end_m = int(end_parts[0]), int(end_parts[1])
+        except (IndexError, ValueError):
+            _LOGGER.warning("Invalid night mode time format: start=%r end=%r", night_start, night_end)
+            start_h = None
 
-        @callback
-        def _night_start_cb(_now):
-            switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")
-            if switch:
-                hass.async_create_task(switch.async_turn_on())
+        if start_h is not None:
+            @callback
+            def _night_start_cb(_now):
+                switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")
+                if switch:
+                    hass.async_create_task(switch.async_turn_on())
 
-        @callback
-        def _night_end_cb(_now):
-            switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")
-            if switch:
-                hass.async_create_task(switch.async_turn_off())
+            @callback
+            def _night_end_cb(_now):
+                switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")
+                if switch:
+                    hass.async_create_task(switch.async_turn_off())
 
-        unsub_listeners.append(async_track_time_change(
-            hass, _night_start_cb,
-            hour=int(start_parts[0]), minute=int(start_parts[1]), second=0,
-        ))
-        unsub_listeners.append(async_track_time_change(
-            hass, _night_end_cb,
-            hour=int(end_parts[0]), minute=int(end_parts[1]), second=0,
-        ))
+            unsub_listeners.append(async_track_time_change(
+                hass, _night_start_cb, hour=start_h, minute=start_m, second=0,
+            ))
+            unsub_listeners.append(async_track_time_change(
+                hass, _night_end_cb, hour=end_h, minute=end_m, second=0,
+            ))
 
     presence_entity = entry.options.get(CONF_PRESENCE_ENTITY, "")
     if presence_entity:

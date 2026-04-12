@@ -183,6 +183,6 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
             settings=settings,
             effects=self.data.effects if self.data else [],
             transitions=self.data.transitions if self.data else [],
-            connected=True,
+            connected=stats.uid != "",
         )
         self.async_set_updated_data(data)
