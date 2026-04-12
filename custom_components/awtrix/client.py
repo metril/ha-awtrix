@@ -179,8 +179,8 @@ class AwtrixHttpClient(AwtrixClient):
                         f"AWTRIX API returned status {status} for {method} {url}"
                     )
                 content_type = response.headers.get("Content-Type", "")
-                if "application/json" in content_type:
-                    json_data = await response.json()
+                if "json" in content_type:
+                    json_data = await response.json(content_type=None)
                     raw_bytes = b""
                 else:
                     raw_bytes = await response.read()
