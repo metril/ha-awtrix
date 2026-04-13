@@ -43,8 +43,8 @@ Or manually:
 |---|---|
 | **Sensor** | Temperature, Humidity, Battery, Illuminance, WiFi Signal, Free RAM, Uptime, Firmware, Current App, IP Address |
 | **Binary Sensor** | Online status |
-| **Switch** | Power on/off |
-| **Number** | Brightness (0-255), Volume (0-30), App Duration (1-300s) |
+| **Switch** | Power on/off, Auto Brightness, Night Mode |
+| **Number** | Brightness (0-255, tracks actual device brightness), Volume (0-30), App Duration (1-300s) |
 | **Select** | Transition Effect |
 | **Button** | Reboot, Next App, Previous App, Dismiss Notification |
 | **Light** | Moodlight (RGB + color temperature), Indicator 1, Indicator 2, Indicator 3 |
@@ -60,6 +60,27 @@ Or manually:
 | `awtrix.update_settings` | Send arbitrary settings to the device |
 | `awtrix.switch_app` | Switch to a specific named app |
 | `awtrix.sleep` | Put the device to sleep for a duration |
+| `awtrix.sync_icons` | Download and upload all built-in icons to the device |
+
+## Night Mode
+
+Night mode dims or turns off the display on a schedule or manually via the Night Mode switch. Configure in the options flow:
+
+- **Night brightness** — set to 0 to turn off the display entirely, or a low value (1-30) to dim
+- **Schedule** — optional start/end times (e.g., 22:00 to 07:00) to automatically toggle night mode
+- **Presence sensor** — optional binary sensor that disables the display when no one is present (works at all hours, independent of the schedule)
+
+When night mode activates, it saves the current brightness and auto-transition state, dims the display, disables app rotation, and switches to the Time app. When it deactivates, it restores the previous settings.
+
+## Auto Brightness
+
+The Ulanzi TC001 has a built-in light sensor. Enable the Auto Brightness switch to let the device adjust display brightness based on ambient light. The Brightness entity tracks the actual device brightness in real time, updating with every stats message from the device.
+
+## MQTT Setup
+
+When using MQTT, the integration auto-discovers AWTRIX devices via Home Assistant's MQTT discovery protocol. It detects devices using ArduinoHA's abbreviated discovery keys.
+
+For icon provisioning and initial settings fetch, provide the device's IP address in the MQTT config flow (optional but recommended). Without it, icons cannot be uploaded and settings rely on optimistic updates only.
 
 ## Built-in App Templates
 
@@ -87,7 +108,7 @@ The weather template supports 4 display modes (each creates a separate app in th
 - **Hourly** — scrolling next 3-6 hours with temperatures
 - **Daily/Weekly** — scrolling next 3-7 days with high/low temperatures
 
-Weather icons use the [LaMetric icon database](https://developer.lametric.com/icons) and can be overridden per condition.
+Weather icons use the [LaMetric icon database](https://developer.lametric.com/icons) and can be overridden per condition. Temperature-based color coding automatically adapts to Fahrenheit or Celsius based on the weather entity's unit.
 
 ## Example Automations
 
