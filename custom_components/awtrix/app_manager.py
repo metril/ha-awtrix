@@ -195,7 +195,9 @@ class AwtrixAppManager:
             payload = {
                 "text": text,
                 "center": True,
-                "noScroll": True,
+                # Let the firmware scroll long dates (e.g. full-year/ISO) instead
+                # of clipping them; short dates that fit stay static and centered.
+                "noScroll": False,
                 "textCase": 2,
                 "lifetime": 0,
                 "color": [255, 200, 50],
@@ -207,7 +209,8 @@ class AwtrixAppManager:
             payload = {
                 "text": text,
                 "center": True,
-                "noScroll": True,
+                # Scroll long time formats (e.g. with seconds) instead of clipping.
+                "noScroll": False,
                 "textCase": 2,
                 "lifetime": 0,
                 "color": [255, 255, 255],

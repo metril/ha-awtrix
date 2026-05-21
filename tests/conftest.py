@@ -90,7 +90,12 @@ def _stub_homeassistant() -> None:
     ha._full_stub = True
 
     # homeassistant.core
-    ha_core = _make_module("homeassistant.core", HomeAssistant=MagicMock, ServiceCall=MagicMock)
+    ha_core = _make_module(
+        "homeassistant.core",
+        HomeAssistant=MagicMock,
+        ServiceCall=MagicMock,
+        callback=lambda func: func,  # identity decorator
+    )
     ha.core = ha_core
 
     # homeassistant.config_entries
@@ -150,6 +155,7 @@ def _stub_homeassistant() -> None:
         "homeassistant.helpers.update_coordinator",
         DataUpdateCoordinator=_DataUpdateCoordinator,
         CoordinatorEntity=_CoordinatorEntity,
+        UpdateFailed=Exception,
     )
     ha_helpers.update_coordinator = ha_uc
 
@@ -159,6 +165,14 @@ def _stub_homeassistant() -> None:
         DeviceInfo=dict,
     )
     ha_helpers.device_registry = ha_dr
+
+    # homeassistant.helpers.event
+    ha_event = _make_module(
+        "homeassistant.helpers.event",
+        async_track_state_change_event=MagicMock(return_value=lambda: None),
+        async_track_time_interval=MagicMock(return_value=lambda: None),
+    )
+    ha_helpers.event = ha_event
 
     # homeassistant.helpers.aiohttp_client
     ha_ac = _make_module(
@@ -199,6 +213,7 @@ def _stub_homeassistant() -> None:
     sys.modules.setdefault("homeassistant.helpers", ha_helpers)
     sys.modules.setdefault("homeassistant.helpers.update_coordinator", ha_uc)
     sys.modules.setdefault("homeassistant.helpers.device_registry", ha_dr)
+    sys.modules.setdefault("homeassistant.helpers.event", ha_event)
     sys.modules.setdefault("homeassistant.helpers.aiohttp_client", ha_ac)
     sys.modules.setdefault("homeassistant.helpers.entity_registry", ha_er)
     sys.modules.setdefault("homeassistant.components", ha_components)

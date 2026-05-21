@@ -92,7 +92,7 @@ Configure in **Settings > Devices & Services > AWTRIX 3 > Configure**:
 | **Temperature** | Display any HA temperature sensor |
 | **Humidity** | Display any HA humidity sensor |
 | **Battery** | Battery level with color coding (green/yellow/red) |
-| **Date** | Current date in configurable format (US, European, ISO, etc.) |
+| **Date** | Current date in configurable format (US, European, ISO, etc.); long formats scroll automatically so the full date is never clipped |
 | **Time** | Current time in configurable format (12h, 24h) |
 | **Countdown** | Countdown from timer or input_datetime entity |
 | **Text** | Display any input_text entity value |

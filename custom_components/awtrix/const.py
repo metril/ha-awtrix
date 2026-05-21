@@ -111,7 +111,8 @@ TIME_FORMATS = {
 }
 
 DATE_FORMATS = {
-    "%m/%d/%Y": "US (04/10/2026)",
+    "%m/%d/%y": "US (05/20/26)",
+    "%m/%d/%Y": "US full year (05/20/2026)",
     "%d/%m/%Y": "European (10/04/2026)",
     "%Y-%m-%d": "ISO (2026-04-10)",
     "%b %d": "Short (Apr 10)",
