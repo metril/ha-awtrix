@@ -10,3 +10,6 @@ build/
 .venv/
 venv/
 .mypy_cache/
+
+# Local planning docs — never commit
+docs/superpowers/
