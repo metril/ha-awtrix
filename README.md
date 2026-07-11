@@ -150,8 +150,16 @@ automation:
 
 ## License
 
-Proprietary — Copyright (c) 2026 metril. All rights reserved.
+Copyright (c) 2026 metril. All rights reserved.
 
-This software is **not** open source. It may not be used, copied, modified, or
-distributed in any way without the express written permission of the owner and a
-valid subscription. See [LICENSE](LICENSE) for the full terms.
+This project is **dual-licensed**:
+
+- **GNU AGPL-3.0** (see [LICENSE](LICENSE)) — free to use and modify, but if you
+  distribute it, or offer a modified version to users over a network, you must
+  release your complete corresponding source under the AGPL-3.0.
+- **Commercial license** (see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)) —
+  available on a paid subscription basis. Required if you want to use this in a
+  closed-source or proprietary product, redistribute it without publishing your
+  source, or offer it as part of a commercial service.
+
+Contributions are accepted only under a Contributor License Agreement.
