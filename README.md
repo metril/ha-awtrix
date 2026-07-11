@@ -150,4 +150,8 @@ automation:
 
 ## License
 
-MIT
+Proprietary — Copyright (c) 2026 metril. All rights reserved.
+
+This software is **not** open source. It may not be used, copied, modified, or
+distributed in any way without the express written permission of the owner and a
+valid subscription. See [LICENSE](LICENSE) for the full terms.

@@ -1,0 +1,67 @@
+PROPRIETARY SOFTWARE LICENSE
+
+Copyright (c) 2026 metril. All rights reserved.
+
+This software and all associated files, source code, documentation, and other
+materials in this repository (collectively, the "Software") are the exclusive
+property of metril (the "Owner"). The Software is proprietary and confidential.
+
+NO LICENSE IS GRANTED
+---------------------
+No right, title, license, or interest in the Software is granted to any person
+or entity by the act of accessing, receiving, or viewing it. All rights not
+expressly granted in a separate written agreement signed by the Owner are
+reserved by the Owner.
+
+PROHIBITED WITHOUT EXPRESS PERMISSION
+-------------------------------------
+Except as expressly authorized in writing by the Owner, no person or entity may:
+
+  1. use, run, execute, or otherwise operate the Software, in whole or in part;
+  2. copy, reproduce, download, store, or retain the Software, in whole or in
+     part, in any form or medium;
+  3. modify, adapt, translate, port, or create derivative works based on the
+     Software;
+  4. distribute, publish, sublicense, sell, rent, lease, lend, host, or
+     otherwise make the Software available to any third party;
+  5. reverse engineer, decompile, or disassemble the Software, except to the
+     extent this restriction is prohibited by applicable law;
+  6. remove, obscure, or alter any copyright, trademark, or other proprietary
+     notice contained in the Software.
+
+CONDITIONS OF USE
+-----------------
+Any use of the Software requires BOTH of the following, at all times:
+
+  (a) the prior express written permission of the Owner; and
+  (b) a valid, current, paid subscription issued by the Owner.
+
+Permission granted by the Owner is non-exclusive, non-transferable, revocable
+at the Owner's sole discretion, and limited to the scope stated in writing by
+the Owner. Any use that continues after a subscription lapses, expires, or is
+terminated, or that exceeds the scope of the written permission, is unlicensed
+and constitutes infringement of the Owner's rights.
+
+To request permission or obtain a subscription, contact the Owner via
+https://github.com/metril.
+
+TERMINATION
+-----------
+Any permission or subscription granted terminates automatically and immediately,
+without notice, upon any breach of this License. Upon termination, all use of
+the Software must cease and all copies must be destroyed.
+
+NO WARRANTY
+-----------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NONINFRINGEMENT.
+
+LIMITATION OF LIABILITY
+-----------------------
+IN NO EVENT SHALL THE OWNER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+This Software is NOT open source and is NOT free software.
