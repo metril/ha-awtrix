@@ -1,35 +1,68 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest pytest-asyncio aiohttp
+      - run: python -m pytest -q tests
+
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    needs: [tests, hassfest]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update manifest version
+      - name: Determine version
+        id: version
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          VERSION="${VERSION#v}"
-          jq --arg v "$VERSION" '.version = $v' custom_components/awtrix/manifest.json > tmp.json
-          mv tmp.json custom_components/awtrix/manifest.json
+          VERSION=$(jq -r .version custom_components/awtrix/manifest.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create release ZIP
-        run: |
-          cd custom_components/awtrix
-          zip -r ../../awtrix.zip .
-
-      - name: Upload release asset
-        uses: actions/upload-release-asset@v1
+      - name: Check existing release
+        id: check
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./awtrix.zip
-          asset_name: awtrix.zip
-          asset_content_type: application/zip
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo exists=true >> "$GITHUB_OUTPUT"
+            echo "Release v$VERSION already exists, skipping."
+          else
+            echo exists=false >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create zip
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          cd custom_components/awtrix && zip -r ../../awtrix.zip . -x '*/__pycache__/*' '*.pyc'
+
+      - name: Create release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" awtrix.zip --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes

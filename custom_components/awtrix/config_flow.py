@@ -9,8 +9,12 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlowWithConfigEntry
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
@@ -99,9 +103,9 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def async_get_options_flow(config_entry: ConfigEntry):
-        return AwtrixOptionsFlowHandler(config_entry)
+        return AwtrixOptionsFlowHandler()
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             self._connection_type = user_input[CONF_CONNECTION_TYPE]
             if self._connection_type == CONNECTION_HTTP:
@@ -109,7 +113,7 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_mqtt()
         return self.async_show_form(step_id="user", data_schema=STEP_CONNECTION_TYPE_SCHEMA)
 
-    async def async_step_http(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_http(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
             host = user_input[CONF_HOST]
@@ -212,7 +216,7 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return discovered
 
-    async def async_step_mqtt(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_mqtt(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
 
         # Check MQTT is configured
@@ -329,11 +333,12 @@ def _color_default(prev: dict) -> dict:
     return {"default": [255, 255, 255]}
 
 
-class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
+class AwtrixOptionsFlowHandler(OptionsFlowWithReload):
     """Two-step options flow: general settings → per-app configuration."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        super().__init__(config_entry)
+    def __init__(self) -> None:
+        self._new_device_host: str | None = None
+        self._device_host_changed = False
         self._general_options: dict[str, Any] = {}
         self._enabled_apps: list[str] = []
 
@@ -341,7 +346,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
     # Step 1 — general options + app selection
     # ------------------------------------------------------------------
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         options = self.config_entry.options
         is_http = self.config_entry.data.get(CONF_CONNECTION_TYPE) == CONNECTION_HTTP
 
@@ -353,15 +358,8 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
             # MQTT: update device_host in config entry data if changed
             if not is_http:
-                new_host = user_input.get(CONF_DEVICE_HOST, "").strip()
-                current_data = dict(self.config_entry.data)
-                if new_host:
-                    current_data[CONF_DEVICE_HOST] = new_host
-                elif CONF_DEVICE_HOST in current_data:
-                    del current_data[CONF_DEVICE_HOST]
-                self.hass.config_entries.async_update_entry(
-                    self.config_entry, data=current_data
-                )
+                self._new_device_host = user_input.get(CONF_DEVICE_HOST, "").strip()
+                self._device_host_changed = True
 
             self._general_options[CONF_NIGHT_MODE_BRIGHTNESS] = user_input.get(CONF_NIGHT_MODE_BRIGHTNESS, 0)
             self._general_options[CONF_NIGHT_MODE_SCHEDULE] = user_input.get(CONF_NIGHT_MODE_SCHEDULE, False)
@@ -432,7 +430,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
     async def async_step_night_schedule(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         if user_input is not None:
             night_start = user_input.get(CONF_NIGHT_MODE_START, "")
             if night_start:
@@ -462,9 +460,22 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
     # Finalize options — route to app config or save
     # ------------------------------------------------------------------
 
-    async def _finalize_options(self) -> FlowResult:
+    def _apply_device_host(self) -> None:
+        """Apply a deferred device_host change to the entry data."""
+        if not self._device_host_changed:
+            return
+        data = dict(self.config_entry.data)
+        if self._new_device_host:
+            data[CONF_DEVICE_HOST] = self._new_device_host
+        else:
+            data.pop(CONF_DEVICE_HOST, None)
+        if self.hass.config_entries.async_update_entry(self.config_entry, data=data):
+            self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
+
+    async def _finalize_options(self) -> ConfigFlowResult:
         if self._enabled_apps:
             return await self.async_step_app_config()
+        self._apply_device_host()
         return self.async_create_entry(
             title="", data={**self._general_options, CONF_APPS: {}}
         )
@@ -475,7 +486,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
     async def async_step_app_config(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         options = self.config_entry.options
         existing_apps_cfg: dict = options.get(CONF_APPS, {})
 
@@ -518,6 +529,7 @@ class AwtrixOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     cfg["entity_id"] = user_input.get("text_entity_id", "")
                 apps_cfg[name] = cfg
 
+            self._apply_device_host()
             return self.async_create_entry(
                 title="",
                 data={**self._general_options, CONF_APPS: apps_cfg},

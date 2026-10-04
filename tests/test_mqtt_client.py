@@ -105,14 +105,14 @@ async def test_send_app():
 
 @pytest.mark.asyncio
 async def test_remove_app():
-    """remove_app() should publish an empty dict to {prefix}/custom/{name}."""
+    """remove_app() should publish an empty payload to {prefix}/custom/{name}."""
     client = _make_client()
     with _patch_mqtt() as mock_publish:
         await client.remove_app("weather")
 
     _hass, topic, payload = mock_publish.call_args[0]
     assert topic == f"{PREFIX}/custom/weather"
-    assert json.loads(payload) == {}
+    assert payload == ""
 
 
 @pytest.mark.asyncio
@@ -158,18 +158,18 @@ async def test_process_stats_message():
     stats_data = {
         "uid": "AABB",
         "bat": 90,
-        "bat_raw": 750,
+        "batRaw": 750,
         "lux": 200,
-        "ldr_raw": 400,
+        "ldrRaw": 400,
         "ram": 120000,
         "bri": 100,
         "temp": 21.0,
         "hum": 50.0,
         "uptime": 7200,
-        "wifi_signal": -60,
-        "version": "0.99",
-        "ip_address": "192.168.1.99",
-        "currentApp": "weather",
+        "sig": -60,
+        "ver": "0.99",
+        "ip": "192.168.1.99",
+        "app": "weather",
     }
     client.process_stats_message(json.dumps(stats_data))
 
