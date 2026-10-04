@@ -38,7 +38,7 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          VERSION=$(jq -r .version custom_components/awtrix/manifest.json)
+          VERSION=$(jq -er .version custom_components/awtrix/manifest.json)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Check existing release
