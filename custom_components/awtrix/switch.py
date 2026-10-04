@@ -26,9 +26,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up AWTRIX switch entities from a config entry."""
-    coordinator: AwtrixCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    coordinator: AwtrixCoordinator = entry.runtime_data.coordinator
     night_switch = AwtrixNightModeSwitch(coordinator, entry)
-    hass.data[DOMAIN][entry.entry_id]["night_mode_switch"] = night_switch
+    entry.runtime_data.night_mode_switch = night_switch
     async_add_entities([
         AwtrixPowerSwitch(coordinator, entry),
         AwtrixAutoBrightnessSwitch(coordinator, entry),

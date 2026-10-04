@@ -29,6 +29,14 @@ Or manually:
 1. Copy the `custom_components/awtrix` folder to your Home Assistant `config/custom_components/` directory
 2. Restart Home Assistant
 
+## Requirements
+
+Home Assistant 2025.12 or newer.
+
+## Releasing
+
+Bump `version` in `custom_components/awtrix/manifest.json` and merge to `main`. CI then creates the tag `vX.Y.Z` and a GitHub release with `awtrix.zip`. No version bump means no release.
+
 ## Setup
 
 1. Go to **Settings > Devices & Services > Add Integration**

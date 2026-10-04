@@ -40,6 +40,7 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=f"AWTRIX {entry.title}",
             update_interval=interval,
         )

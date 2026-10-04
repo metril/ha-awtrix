@@ -10,6 +10,17 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    name: Tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest pytest-asyncio aiohttp
+      - run: python -m pytest -q tests
+
   validate-hacs:
     runs-on: ubuntu-latest
     name: HACS Validation

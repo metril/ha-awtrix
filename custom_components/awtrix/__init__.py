@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -38,8 +39,11 @@ from .const import (
     get_all_icon_ids,
 )
 from .coordinator import AwtrixCoordinator
+from .runtime import AwtrixConfigEntry, AwtrixRuntimeData
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
@@ -97,7 +101,13 @@ SERVICE_SCHEMAS = {
 }
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the AWTRIX 3 integration (registers services once)."""
+    _register_services(hass)
+    return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: AwtrixConfigEntry) -> bool:
     """Set up AWTRIX 3 from a config entry."""
     connection_type = entry.data[CONF_CONNECTION_TYPE]
 
@@ -135,22 +145,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         http_client=icon_client,
     )
 
+    runtime = AwtrixRuntimeData(
+        coordinator=coordinator, client=client, icon_client=icon_client
+    )
+    entry.runtime_data = runtime
+
     if connection_type == CONNECTION_MQTT:
+        entry.async_on_unload(coordinator.async_stop)
         await coordinator.async_start()
 
     await coordinator.async_config_entry_first_refresh()
-
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
-        "coordinator": coordinator,
-        "client": client,
-        "icon_client": icon_client,
-    }
 
     apps_config = entry.options.get(CONF_APPS, {})
     if any(cfg.get("enabled") for cfg in apps_config.values()):
         from .app_manager import AwtrixAppManager
         app_manager = AwtrixAppManager(hass, client, apps_config, icon_client=icon_client)
-        hass.data[DOMAIN][entry.entry_id]["app_manager"] = app_manager
+        runtime.app_manager = app_manager
+        entry.async_on_unload(app_manager.async_stop)
         await app_manager.async_start()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -159,7 +170,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     schedule_enabled = entry.options.get(CONF_NIGHT_MODE_SCHEDULE, False)
     night_start = entry.options.get(CONF_NIGHT_MODE_START, "")
     night_end = entry.options.get(CONF_NIGHT_MODE_END, "")
-    unsub_listeners = []
 
     if schedule_enabled and night_start and night_end:
         from homeassistant.helpers.event import async_track_time_change
@@ -176,20 +186,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if start_h is not None and end_h is not None:
             @callback
             def _night_start_cb(_now):
-                switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")
+                switch = runtime.night_mode_switch
                 if switch:
                     hass.async_create_task(switch.async_turn_on())
 
             @callback
             def _night_end_cb(_now):
-                switch = hass.data[DOMAIN][entry.entry_id].get("night_mode_switch")
+                switch = runtime.night_mode_switch
                 if switch:
                     hass.async_create_task(switch.async_turn_off())
 
-            unsub_listeners.append(async_track_time_change(
+            entry.async_on_unload(async_track_time_change(
                 hass, _night_start_cb, hour=start_h, minute=start_m, second=0,
             ))
-            unsub_listeners.append(async_track_time_change(
+            entry.async_on_unload(async_track_time_change(
                 hass, _night_end_cb, hour=end_h, minute=end_m, second=0,
             ))
 
@@ -207,66 +217,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             else:
                 hass.async_create_task(client.update_settings({"MATP": False}))
 
-        unsub_listeners.append(async_track_state_change_event(
+        entry.async_on_unload(async_track_state_change_event(
             hass, presence_entity, _presence_cb
         ))
-
-    hass.data[DOMAIN][entry.entry_id]["unsub_listeners"] = unsub_listeners
-
-    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
-
-    # Register services (once, not per entry)
-    if not hass.services.has_service(DOMAIN, "notify"):
-        _register_services(hass)
 
     return True
 
 
-async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update — reload the entry."""
-    await hass.config_entries.async_reload(entry.entry_id)
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: AwtrixConfigEntry) -> bool:
     """Unload a config entry."""
-    data = hass.data[DOMAIN].get(entry.entry_id, {})
-
-    for unsub in data.get("unsub_listeners", []):
-        unsub()
-
-    app_manager = data.get("app_manager")
-    if app_manager:
-        await app_manager.async_stop()
-
-    coordinator = data.get("coordinator")
-    if coordinator is not None and hasattr(coordinator, "async_stop"):
-        await coordinator.async_stop()
-
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-    # Unregister services if no entries left
-    if unload_ok and not hass.data.get(DOMAIN):
-        for service_name in SERVICE_SCHEMAS:
-            hass.services.async_remove(DOMAIN, service_name)
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-def _get_data_for_device(hass: HomeAssistant, device_id: str) -> dict:
-    """Resolve device_id to its hass.data dict (client, icon_client, coordinator)."""
+def _get_entry_for_device(hass: HomeAssistant, device_id: str) -> AwtrixConfigEntry:
+    """Resolve device_id to its loaded config entry."""
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get(device_id)
     if device is None:
-        raise HomeAssistantError(f"Device {device_id} not found")
-    for entry_id in device.config_entries:
-        if entry_id in hass.data.get(DOMAIN, {}):
-            return hass.data[DOMAIN][entry_id]
-    raise HomeAssistantError(f"No AWTRIX integration found for device {device_id}")
+        raise ServiceValidationError(f"Device {device_id} not found")
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.state is ConfigEntryState.LOADED and entry.entry_id in device.config_entries:
+            return entry
+    raise ServiceValidationError(f"No loaded AWTRIX integration found for device {device_id}")
+
+
+def _get_data_for_device(hass: HomeAssistant, device_id: str) -> AwtrixRuntimeData:
+    """Resolve device_id to its runtime data."""
+    return _get_entry_for_device(hass, device_id).runtime_data
 
 
 def _get_client_for_device(hass: HomeAssistant, device_id: str):
     """Resolve device_id to its AwtrixClient."""
-    return _get_data_for_device(hass, device_id)["client"]
+    return _get_data_for_device(hass, device_id).client
 
 
 def _register_services(hass: HomeAssistant) -> None:
@@ -277,7 +259,7 @@ def _register_services(hass: HomeAssistant) -> None:
         icon_str = str(icon_value) if icon_value is not None else ""
         if icon_str and icon_str.isdigit():
             data = _get_data_for_device(hass, device_id)
-            ic = data.get("icon_client") or data["client"]
+            ic = data.icon_client or data.client
             _LOGGER.debug("Provisioning icon %s via %s", icon_str, type(ic).__name__)
             try:
                 await ic.ensure_icons([int(icon_str)])
@@ -342,36 +324,28 @@ def _register_services(hass: HomeAssistant) -> None:
 
     async def handle_sync_icons(call: ServiceCall) -> None:
         device_id = call.data["device_id"]
-        dev_reg = dr.async_get(hass)
-        device = dev_reg.async_get(device_id)
-        if device is None:
-            raise HomeAssistantError(f"Device {device_id} not found")
-        for entry_id in device.config_entries:
-            if entry_id in hass.data.get(DOMAIN, {}):
-                data = hass.data[DOMAIN][entry_id]
-                c = data.get("icon_client")
-                _LOGGER.info(
-                    "sync_icons: entry=%s icon_client=%s client_type=%s",
-                    entry_id, type(c).__name__ if c else None,
-                    type(data["client"]).__name__,
+        entry = _get_entry_for_device(hass, device_id)
+        data = entry.runtime_data
+        c = data.icon_client
+        _LOGGER.info(
+            "sync_icons: entry=%s icon_client=%s client_type=%s",
+            entry.entry_id, type(c).__name__ if c else None,
+            type(data.client).__name__,
+        )
+        if c is None:
+            if isinstance(data.client, AwtrixHttpClient):
+                c = data.client
+            else:
+                raise HomeAssistantError(
+                    "No HTTP connection available for icon sync. "
+                    "Set the Device IP Address in Configure and restart."
                 )
-                if c is None:
-                    main_client = data["client"]
-                    if isinstance(main_client, AwtrixHttpClient):
-                        c = main_client
-                    else:
-                        raise HomeAssistantError(
-                            "No HTTP connection available for icon sync. "
-                            "Set the Device IP Address in Configure and restart."
-                        )
-                icon_ids = get_all_icon_ids()
-                _LOGGER.info("sync_icons: provisioning %d icons via %s", len(icon_ids), type(c).__name__)
-                try:
-                    await c.ensure_icons(icon_ids)
-                except Exception as err:
-                    raise HomeAssistantError(str(err)) from err
-                return
-        raise HomeAssistantError(f"No AWTRIX integration found for device {device_id}")
+        icon_ids = get_all_icon_ids()
+        _LOGGER.info("sync_icons: provisioning %d icons via %s", len(icon_ids), type(c).__name__)
+        try:
+            await c.ensure_icons(icon_ids)
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
 
     handlers = {
         "notify": handle_notify,

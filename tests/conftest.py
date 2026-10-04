@@ -99,7 +99,26 @@ def _stub_homeassistant() -> None:
     ha.core = ha_core
 
     # homeassistant.config_entries
-    ha_ce = _make_module("homeassistant.config_entries", ConfigEntry=MagicMock)
+    class _ConfigEntry:
+        def __class_getitem__(cls, item):
+            return cls
+
+    class _ConfigEntryState:
+        LOADED = "loaded"
+        NOT_LOADED = "not_loaded"
+
+    class _ConfigFlow:
+        def __init_subclass__(cls, domain=None, **kwargs):
+            super().__init_subclass__(**kwargs)
+
+    ha_ce = _make_module(
+        "homeassistant.config_entries",
+        ConfigEntry=_ConfigEntry,
+        ConfigEntryState=_ConfigEntryState,
+        ConfigFlow=_ConfigFlow,
+        ConfigFlowResult=dict,
+        OptionsFlowWithReload=type("OptionsFlowWithReload", (), {}),
+    )
     ha.config_entries = ha_ce
 
     # homeassistant.const
@@ -112,7 +131,13 @@ def _stub_homeassistant() -> None:
         SENSOR = "sensor"
         SWITCH = "switch"
 
-    ha_const = _make_module("homeassistant.const", Platform=_Platform)
+    class _EntityCategory:
+        CONFIG = "config"
+        DIAGNOSTIC = "diagnostic"
+
+    ha_const = _make_module(
+        "homeassistant.const", Platform=_Platform, EntityCategory=_EntityCategory
+    )
     ha.const = ha_const
 
     # homeassistant.exceptions
@@ -120,12 +145,20 @@ def _stub_homeassistant() -> None:
         "homeassistant.exceptions",
         UpdateFailed=Exception,
         HomeAssistantError=Exception,
+        ServiceValidationError=Exception,
     )
     ha.exceptions = ha_exc
 
     # homeassistant.helpers (namespace)
     ha_helpers = _make_module("homeassistant.helpers")
     ha.helpers = ha_helpers
+
+    ha_cv = _make_module(
+        "homeassistant.helpers.config_validation",
+        config_entry_only_config_schema=lambda domain: (lambda config: config),
+    )
+    ha_helpers.config_validation = ha_cv
+    sys.modules.setdefault("homeassistant.helpers.config_validation", ha_cv)
 
     # homeassistant.helpers.update_coordinator
     from typing import Generic, TypeVar

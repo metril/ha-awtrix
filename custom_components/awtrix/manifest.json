@@ -6,8 +6,9 @@
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/metril/ha-awtrix",
+  "integration_type": "device",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/metril/ha-awtrix/issues",
   "requirements": [],
-  "version": "1.6.8"
+  "version": "1.7.0"
 }

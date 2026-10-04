@@ -61,18 +61,18 @@ async def test_get_stats():
     stats_payload = {
         "uid": "AABB",
         "bat": 85,
-        "bat_raw": 700,
+        "batRaw": 700,
         "lux": 300,
-        "ldr_raw": 512,
+        "ldrRaw": 512,
         "ram": 140000,
         "bri": 120,
         "temp": 22.5,
         "hum": 45.0,
         "uptime": 3600,
-        "wifi_signal": -55,
-        "version": "0.98",
-        "ip_address": "192.168.1.50",
-        "currentApp": "clock",
+        "sig": -55,
+        "ver": "0.98",
+        "ip": "192.168.1.50",
+        "app": "clock",
     }
     session, _ = _make_session(json_data=stats_payload)
     client = AwtrixHttpClient(session, "192.168.1.50")
