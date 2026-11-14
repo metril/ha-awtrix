@@ -10,6 +10,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -106,9 +107,7 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
             )
         except AwtrixApiError as err:
             if err.status == 401:
-                raise UpdateFailed(
-                    "AWTRIX rejected the credentials (HTTP 401); check username/password"
-                ) from err
+                raise ConfigEntryAuthFailed("AWTRIX rejected the credentials") from err
             raise UpdateFailed(f"AWTRIX API error: {err}") from err
         except (AwtrixConnectionError, ValueError, KeyError, TypeError) as err:
             raise UpdateFailed(f"Error communicating with AWTRIX: {err}") from err

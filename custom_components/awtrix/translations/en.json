@@ -28,17 +28,27 @@
           "username": "Device Username (optional)",
           "password": "Device Password (optional)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate AWTRIX",
+        "description": "The AWTRIX device rejected the saved credentials. Enter the current username and password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to AWTRIX device. Check the IP address and port.",
       "no_devices_found": "No AWTRIX devices found on MQTT. Enter the topic prefix manually below.",
       "no_prefix": "Please select a device or enter a prefix manually.",
-      "unknown": "Unexpected error. Check the logs for details."
+      "unknown": "Unexpected error. Check the logs for details.",
+      "invalid_auth": "Invalid username or password"
     },
     "abort": {
       "already_configured": "This AWTRIX device is already configured.",
-      "mqtt_not_configured": "MQTT integration is not configured. Please set up MQTT first."
+      "mqtt_not_configured": "MQTT integration is not configured. Please set up MQTT first.",
+      "reauth_successful": "Re-authentication was successful"
     }
   },
   "options": {

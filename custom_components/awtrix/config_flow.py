@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -32,7 +33,7 @@ from homeassistant.helpers.selector import (
     TimeSelector,
 )
 
-from .client import AwtrixConnectionError, AwtrixHttpClient
+from .client import AwtrixApiError, AwtrixConnectionError, AwtrixHttpClient
 from .const import (
     CONF_APPS,
     CONF_CONNECTION_TYPE,
@@ -101,6 +102,15 @@ STEP_HTTP_SCHEMA = vol.Schema(
     }
 )
 
+REAUTH_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME, default=""): TextSelector(),
+        vol.Required(CONF_PASSWORD, default=""): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
+    }
+)
+
 MQTT_DISCOVERY_TIMEOUT = 10  # seconds to listen for AWTRIX devices
 
 
@@ -140,6 +150,8 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             try:
                 stats = await client.get_stats()
+            except AwtrixApiError as err:
+                errors["base"] = "invalid_auth" if err.status == 401 else "unknown"
             except AwtrixConnectionError:
                 errors["base"] = "cannot_connect"
             except Exception:
@@ -163,6 +175,51 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
                     data=entry_data,
                 )
         return self.async_show_form(step_id="http", data_schema=STEP_HTTP_SCHEMA, errors=errors)
+
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        if user_input is not None:
+            username = user_input.get(CONF_USERNAME, "").strip()
+            password = user_input.get(CONF_PASSWORD, "").strip()
+            host = entry.data.get(CONF_HOST) or entry.data.get(CONF_DEVICE_HOST)
+            if host:
+                client = AwtrixHttpClient(
+                    session=async_get_clientsession(self.hass),
+                    host=host,
+                    port=int(entry.data.get(CONF_PORT, DEFAULT_PORT)),
+                    username=username or None,
+                    password=password or None,
+                )
+                try:
+                    await client.get_stats()
+                except AwtrixApiError as err:
+                    errors["base"] = "invalid_auth" if err.status == 401 else "unknown"
+                except AwtrixConnectionError:
+                    errors["base"] = "cannot_connect"
+                except Exception:
+                    _LOGGER.exception("Unexpected error during AWTRIX reauth")
+                    errors["base"] = "unknown"
+            if not errors:
+                # Blank fields clear stored credentials (auth disabled on device).
+                new_data = {
+                    k: v
+                    for k, v in entry.data.items()
+                    if k not in (CONF_USERNAME, CONF_PASSWORD)
+                }
+                if username:
+                    new_data[CONF_USERNAME] = username
+                if password:
+                    new_data[CONF_PASSWORD] = password
+                return self.async_update_reload_and_abort(entry, data=new_data)
+        return self.async_show_form(
+            step_id="reauth_confirm", data_schema=REAUTH_SCHEMA, errors=errors
+        )
 
     async def _discover_mqtt_devices(self) -> dict[str, dict]:
         """Discover AWTRIX devices via standard HA MQTT discovery topics.

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.awtrix.__init__ import presence_to_matp
@@ -45,13 +46,13 @@ def _coordinator(client, connection_type="http"):
     return AwtrixCoordinator(MagicMock(), entry, client, connection_type=connection_type)
 
 
-def test_401_is_update_failed_with_hint():
+def test_401_raises_auth_failed():
     client = MagicMock()
     client.get_stats = AsyncMock(
         side_effect=AwtrixApiError("AWTRIX API returned status 401 for GET http://x", 401)
     )
     client.get_settings = AsyncMock(return_value={})
-    with pytest.raises(UpdateFailed, match="401"):
+    with pytest.raises(ConfigEntryAuthFailed):
         asyncio.run(_coordinator(client)._async_update_data())
 
 
