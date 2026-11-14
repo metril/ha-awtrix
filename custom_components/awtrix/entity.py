@@ -6,7 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, CONF_HOST, CONF_PORT, CONF_CONNECTION_TYPE, CONNECTION_HTTP
+from .const import CONF_CONNECTION_TYPE, CONF_HOST, CONF_PORT, CONNECTION_HTTP, DOMAIN
 from .coordinator import AwtrixCoordinator
 
 
@@ -38,3 +38,8 @@ class AwtrixEntity(CoordinatorEntity[AwtrixCoordinator]):
             sw_version=sw_version,
             configuration_url=configuration_url,
         )
+
+    @property
+    def available(self) -> bool:
+        """Return True if the coordinator succeeded and the device is online."""
+        return super().available and self.coordinator.device_online

@@ -6,13 +6,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from homeassistant.components.number import NumberEntityDescription, NumberEntity
+from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, SETTING_BRIGHTNESS, SETTING_VOLUME, SETTING_APP_DURATION
+from .const import SETTING_APP_DURATION, SETTING_BRIGHTNESS, SETTING_VOLUME
 from .coordinator import AwtrixCoordinator
 from .entity import AwtrixEntity
 from .models import AwtrixDeviceData
@@ -32,6 +33,7 @@ NUMBERS: tuple[AwtrixNumberDescription, ...] = (
     AwtrixNumberDescription(
         key="brightness",
         name="Brightness",
+        entity_category=EntityCategory.CONFIG,
         icon="mdi:brightness-6",
         native_min_value=0,
         native_max_value=255,
@@ -42,6 +44,7 @@ NUMBERS: tuple[AwtrixNumberDescription, ...] = (
     AwtrixNumberDescription(
         key="volume",
         name="Volume",
+        entity_category=EntityCategory.CONFIG,
         icon="mdi:volume-high",
         native_min_value=0,
         native_max_value=30,
@@ -51,6 +54,7 @@ NUMBERS: tuple[AwtrixNumberDescription, ...] = (
     AwtrixNumberDescription(
         key="app_duration",
         name="App Duration",
+        entity_category=EntityCategory.CONFIG,
         icon="mdi:timer-outline",
         native_min_value=1,
         native_max_value=300,

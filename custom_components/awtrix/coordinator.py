@@ -4,18 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .client import AwtrixClient, AwtrixConnectionError, AwtrixMqttClient
+from .client import (
+    AwtrixApiError,
+    AwtrixClient,
+    AwtrixConnectionError,
+    AwtrixMqttClient,
+)
 from .const import CONNECTION_MQTT
-from .models import AwtrixDeviceData, AwtrixStats
+from .models import AwtrixDeviceData
 
 _LOGGER = logging.getLogger(__name__)
+
+# MQTT mode: device is considered offline when no stats arrive for this long.
+MQTT_STALE_AFTER = timedelta(minutes=3)
+MQTT_STALE_CHECK_INTERVAL = timedelta(seconds=60)
 
 
 class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
@@ -33,6 +44,8 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         self._connection_type = connection_type
         self._http_client = http_client
         self._mqtt_unsubs: list[Any] = []
+        self._mqtt_online = True
+        self._last_stats_time = time.monotonic()
 
         # MQTT mode: no polling — data arrives via subscription
         interval = None if connection_type == CONNECTION_MQTT else timedelta(seconds=poll_interval)
@@ -47,25 +60,32 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         self.client = client
         self.entry = entry
 
+    @property
+    def device_online(self) -> bool:
+        """Return True if the device is reachable (poll success or recent MQTT stats)."""
+        if self._connection_type == CONNECTION_MQTT:
+            return self._mqtt_online
+        return self.last_update_success
+
+    @callback
+    def _check_mqtt_stale(self, _now=None) -> None:
+        """Mark the device offline if no stats message arrived recently."""
+        age = time.monotonic() - self._last_stats_time
+        if self._mqtt_online and age > MQTT_STALE_AFTER.total_seconds():
+            self._mqtt_online = False
+            self.async_update_listeners()
+
     async def _async_update_data(self) -> AwtrixDeviceData:
         """Fetch data from the AWTRIX device."""
         if self._connection_type == CONNECTION_MQTT:
-            # If we have an HTTP client, use it for initial data (settings, effects, transitions)
+            # If we have an HTTP client, use it for initial data (settings)
             if self._http_client is not None:
                 try:
-                    stats, settings, effects, transitions = await asyncio.gather(
+                    stats, settings = await asyncio.gather(
                         self._http_client.get_stats(),
                         self._http_client.get_settings(),
-                        self._http_client.get_effects(),
-                        self._http_client.get_transitions(),
                     )
-                    return AwtrixDeviceData(
-                        stats=stats,
-                        settings=settings,
-                        effects=effects,
-                        transitions=transitions,
-                        connected=True,
-                    )
+                    return AwtrixDeviceData(stats=stats, settings=settings, connected=True)
                 except Exception:
                     _LOGGER.warning("HTTP initial fetch failed, using MQTT cached data", exc_info=True)
 
@@ -76,28 +96,24 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
             return AwtrixDeviceData(
                 stats=stats,
                 settings=settings,
-                effects=[],
-                transitions=[],
                 connected=stats.uid != "",
             )
 
         try:
-            stats, settings, effects, transitions = await asyncio.gather(
+            stats, settings = await asyncio.gather(
                 self.client.get_stats(),
                 self.client.get_settings(),
-                self.client.get_effects(),
-                self.client.get_transitions(),
             )
-        except AwtrixConnectionError as err:
+        except AwtrixApiError as err:
+            if err.status == 401:
+                raise UpdateFailed(
+                    "AWTRIX rejected the credentials (HTTP 401); check username/password"
+                ) from err
+            raise UpdateFailed(f"AWTRIX API error: {err}") from err
+        except (AwtrixConnectionError, ValueError, KeyError, TypeError) as err:
             raise UpdateFailed(f"Error communicating with AWTRIX: {err}") from err
 
-        return AwtrixDeviceData(
-            stats=stats,
-            settings=settings,
-            effects=effects,
-            transitions=transitions,
-            connected=True,
-        )
+        return AwtrixDeviceData(stats=stats, settings=settings, connected=True)
 
     async def async_start(self) -> None:
         """Subscribe to MQTT topics (MQTT mode only)."""
@@ -105,7 +121,7 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
             return
 
         assert isinstance(self.client, AwtrixMqttClient)
-        prefix = self.client._prefix
+        prefix = self.client.prefix
 
         from homeassistant.components.mqtt import async_subscribe
 
@@ -117,11 +133,15 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
             # adds settings publication.
             (f"{prefix}/settings", self._handle_mqtt_settings),
             (f"{prefix}/stats/currentApp", self._handle_mqtt_current_app),
-            (f"{prefix}/stats/effects", self._handle_mqtt_effects),
-            (f"{prefix}/stats/transitions", self._handle_mqtt_transitions),
         ]
         for topic, handler in subs:
             self._mqtt_unsubs.append(await async_subscribe(self.hass, topic, handler))
+
+        self._mqtt_unsubs.append(
+            async_track_time_interval(
+                self.hass, self._check_mqtt_stale, MQTT_STALE_CHECK_INTERVAL
+            )
+        )
 
         _LOGGER.debug("Subscribed to %d MQTT topics for %s", len(subs), prefix)
 
@@ -139,6 +159,8 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         except Exception:  # noqa: BLE001
             _LOGGER.warning("Failed to parse MQTT stats message")
             return
+        self._last_stats_time = time.monotonic()
+        self._mqtt_online = True
         await self._rebuild_data()
 
     async def _handle_mqtt_settings(self, message) -> None:
@@ -158,28 +180,6 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
             self.data.stats.current_app = payload if isinstance(payload, str) else payload.decode()
             self.async_set_updated_data(self.data)
 
-    async def _handle_mqtt_effects(self, message) -> None:
-        """Handle effects list message."""
-        import json
-        try:
-            effects = json.loads(message.payload)
-            if self.data and isinstance(effects, list):
-                self.data.effects = effects
-                self.async_set_updated_data(self.data)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    async def _handle_mqtt_transitions(self, message) -> None:
-        """Handle transitions list message."""
-        import json
-        try:
-            transitions = json.loads(message.payload)
-            if self.data and isinstance(transitions, list):
-                self.data.transitions = transitions
-                self.async_set_updated_data(self.data)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
     async def _rebuild_data(self) -> None:
         """Rebuild device data from the MQTT client's cached state."""
         stats = await self.client.get_stats()
@@ -195,8 +195,6 @@ class AwtrixCoordinator(DataUpdateCoordinator[AwtrixDeviceData]):
         data = AwtrixDeviceData(
             stats=stats,
             settings=settings,
-            effects=self.data.effects if self.data else [],
-            transitions=self.data.transitions if self.data else [],
             connected=stats.uid != "",
         )
         self.async_set_updated_data(data)

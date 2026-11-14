@@ -14,17 +14,17 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    LIGHT_LUX,
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
     UnitOfInformation,
     UnitOfTemperature,
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.const import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
 from .coordinator import AwtrixCoordinator
 from .entity import AwtrixEntity
 from .models import AwtrixDeviceData
@@ -66,7 +66,7 @@ SENSORS: tuple[AwtrixSensorDescription, ...] = (
         key="illuminance",
         name="Illuminance",
         device_class=SensorDeviceClass.ILLUMINANCE,
-        native_unit_of_measurement="lx",
+        native_unit_of_measurement=LIGHT_LUX,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: data.stats.lux,
     ),

@@ -8,7 +8,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -20,7 +24,6 @@ from .const import (
     CONF_DEVICE_HOST,
     CONF_HOST,
     CONF_MQTT_PREFIX,
-    CONF_NIGHT_MODE_BRIGHTNESS,
     CONF_NIGHT_MODE_END,
     CONF_NIGHT_MODE_SCHEDULE,
     CONF_NIGHT_MODE_START,
@@ -101,6 +104,13 @@ SERVICE_SCHEMAS = {
 }
 
 
+def presence_to_matp(new_state) -> bool | None:
+    """Map a presence state to the MATP setting; None for unavailable/unknown/missing."""
+    if new_state is None or new_state.state not in ("on", "off"):
+        return None
+    return new_state.state == "on"
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the AWTRIX 3 integration (registers services once)."""
     _register_services(hass)
@@ -151,6 +161,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: AwtrixConfigEntry) -> bo
     entry.runtime_data = runtime
 
     if connection_type == CONNECTION_MQTT:
+        from homeassistant.components import mqtt
+
+        if not await mqtt.async_wait_for_mqtt_client(hass):
+            raise ConfigEntryNotReady("MQTT integration is not available")
         entry.async_on_unload(coordinator.async_stop)
         await coordinator.async_start()
 
@@ -162,7 +176,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: AwtrixConfigEntry) -> bo
         app_manager = AwtrixAppManager(hass, client, apps_config, icon_client=icon_client)
         runtime.app_manager = app_manager
         entry.async_on_unload(app_manager.async_stop)
-        await app_manager.async_start()
+        last_uptime = [coordinator.data.stats.uptime if coordinator.data else 0]
+
+        @callback
+        def _resend_after_reboot() -> None:
+            # AWTRIX drops custom apps on reboot; uptime going backwards means
+            # the device restarted, so force the next update to re-send apps.
+            data = coordinator.data
+            if data is None:
+                return
+            if data.stats.uptime < last_uptime[0]:
+                entry.async_create_background_task(
+                    hass,
+                    app_manager.async_resend_all(),
+                    f"awtrix_app_resend_{entry.entry_id}",
+                )
+            last_uptime[0] = data.stats.uptime
+
+        entry.async_on_unload(coordinator.async_add_listener(_resend_after_reboot))
+        entry.async_create_background_task(
+            hass, app_manager.async_start(), f"awtrix_app_manager_{entry.entry_id}"
+        )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -210,12 +244,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: AwtrixConfigEntry) -> bo
         @callback
         def _presence_cb(event):
             new_state = event.data.get("new_state")
-            if new_state is None:
+            matp = presence_to_matp(new_state)
+            if matp is None:
                 return
-            if new_state.state == "on":
-                hass.async_create_task(client.update_settings({"MATP": True}))
-            else:
-                hass.async_create_task(client.update_settings({"MATP": False}))
+            hass.async_create_task(client.update_settings({"MATP": matp}))
 
         entry.async_on_unload(async_track_state_change_event(
             hass, presence_entity, _presence_cb

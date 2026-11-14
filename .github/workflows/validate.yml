@@ -10,23 +10,38 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
-  tests:
+  tests-shard:
     runs-on: ubuntu-latest
-    name: Tests
+    name: Tests (shard ${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
-      - run: pip install pytest pytest-asyncio aiohttp
-      - run: python -m pytest -q tests
+          python-version: "3.14"
+      - run: pip install pytest pytest-asyncio pytest-xdist aiohttp
+      - name: Run shard
+        run: |
+          FILES=$(ls tests/test_*.py | awk -v s=${{ matrix.shard }} 'NR % 2 == s')
+          python -m pytest $FILES
+
+  tests:
+    runs-on: ubuntu-latest
+    name: Tests
+    needs: tests-shard
+    if: always()
+    steps:
+      - run: test "${{ needs.tests-shard.result }}" = success
 
   validate-hacs:
     runs-on: ubuntu-latest
     name: HACS Validation
     steps:
       - uses: actions/checkout@v4
-      - uses: hacs/action@main
+      - uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
         with:
           category: integration
 
@@ -35,4 +50,4 @@ jobs:
     name: Hassfest Validation
     steps:
       - uses: actions/checkout@v4
-      - uses: home-assistant/actions/hassfest@master
+      - uses: home-assistant/actions/hassfest@86d4564712fa02543c808e3a693dd04f9d3f8361

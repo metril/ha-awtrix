@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
 
 pytest_plugins = []
@@ -14,7 +15,6 @@ def _stub_voluptuous() -> None:
     if "voluptuous" in sys.modules:
         return
 
-    import functools
 
     vol = types.ModuleType("voluptuous")
 
@@ -144,6 +144,8 @@ def _stub_homeassistant() -> None:
     ha_exc = _make_module(
         "homeassistant.exceptions",
         UpdateFailed=Exception,
+        ConfigEntryAuthFailed=type("ConfigEntryAuthFailed", (Exception,), {}),
+        ConfigEntryNotReady=type("ConfigEntryNotReady", (Exception,), {}),
         HomeAssistantError=Exception,
         ServiceValidationError=Exception,
     )
@@ -204,6 +206,7 @@ def _stub_homeassistant() -> None:
         "homeassistant.helpers.event",
         async_track_state_change_event=MagicMock(return_value=lambda: None),
         async_track_time_interval=MagicMock(return_value=lambda: None),
+        async_track_time_change=MagicMock(return_value=lambda: None),
     )
     ha_helpers.event = ha_event
 
@@ -219,11 +222,12 @@ def _stub_homeassistant() -> None:
     ha_helpers.entity_registry = ha_er
 
     # homeassistant.util.dt
-    from datetime import datetime, timezone
+    from datetime import datetime
     ha_util = _make_module("homeassistant.util")
     ha_util_dt = _make_module(
         "homeassistant.util.dt",
-        now=lambda: datetime.now(tz=timezone.utc),
+        now=lambda: datetime.now(tz=UTC),
+        as_local=lambda d: d.astimezone(),
     )
     ha_util.dt = ha_util_dt
     ha.util = ha_util
@@ -236,6 +240,12 @@ def _stub_homeassistant() -> None:
     )
     ha_components.mqtt = ha_mqtt
     ha.components = ha_components
+
+    # homeassistant.helpers.selector: any selector name resolves to a MagicMock
+    ha_sel = _make_module("homeassistant.helpers.selector")
+    ha_sel.__getattr__ = lambda name: MagicMock(name=name)
+    ha_helpers.selector = ha_sel
+    sys.modules.setdefault("homeassistant.helpers.selector", ha_sel)
 
     # Register all modules
     sys.modules.setdefault("homeassistant", ha)

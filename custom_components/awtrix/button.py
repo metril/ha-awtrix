@@ -6,13 +6,17 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
 
-from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
+from homeassistant.components.button import (
+    ButtonDeviceClass,
+    ButtonEntity,
+    ButtonEntityDescription,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .client import AwtrixClient
-from .const import DOMAIN
 from .coordinator import AwtrixCoordinator
 from .entity import AwtrixEntity
 
@@ -30,6 +34,7 @@ BUTTONS: tuple[AwtrixButtonDescription, ...] = (
     AwtrixButtonDescription(
         key="reboot",
         name="Reboot",
+        device_class=ButtonDeviceClass.RESTART,
         icon="mdi:restart",
         press_fn=lambda client: client.reboot(),
     ),
@@ -86,4 +91,11 @@ class AwtrixButton(AwtrixEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        await self.entity_description.press_fn(self.coordinator.client)
+        try:
+            await self.entity_description.press_fn(self.coordinator.client)
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            raise HomeAssistantError(
+                f"Failed to press {self.entity_description.key}: {err}"
+            ) from err

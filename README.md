@@ -31,7 +31,7 @@ Or manually:
 
 ## Requirements
 
-Home Assistant 2025.12 or newer.
+Home Assistant 2026.3 or newer (Python 3.14).
 
 ## Releasing
 
