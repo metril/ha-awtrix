@@ -7,11 +7,10 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
 from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
 from .coordinator import AwtrixCoordinator
 from .entity import AwtrixEntity
 
@@ -40,6 +39,11 @@ class AwtrixOnlineSensor(AwtrixEntity, BinarySensorEntity):
         self._attr_unique_id = f"{uid}_online"
 
     @property
+    def available(self) -> bool:
+        """Always available: offline is reported as state, not unavailability."""
+        return True
+
+    @property
     def is_on(self) -> bool:
         """Return True if the device is online."""
-        return self.coordinator.last_update_success
+        return self.coordinator.device_online

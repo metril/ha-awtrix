@@ -7,8 +7,6 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-import asyncio
-
 import aiohttp
 
 from .models import AwtrixStats
@@ -22,6 +20,10 @@ class AwtrixConnectionError(Exception):
 
 class AwtrixApiError(Exception):
     """Raised when the AWTRIX API returns a non-200 response."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class AwtrixClient(ABC):
@@ -115,7 +117,7 @@ class AwtrixClient(ABC):
 class _AwtrixResponse:
     """Lightweight container for a consumed aiohttp response."""
 
-    __slots__ = ("status", "_json_data", "_raw_bytes", "_method", "_url")
+    __slots__ = ("_json_data", "_method", "_raw_bytes", "_url", "status")
 
     def __init__(
         self,
@@ -160,6 +162,7 @@ class AwtrixHttpClient(AwtrixClient):
             self._auth: aiohttp.BasicAuth | None = aiohttp.BasicAuth(username, password)
         else:
             self._auth = None
+        self._provisioned_icons: set[int] = set()
 
     async def _request(self, method: str, path: str, **kwargs) -> _AwtrixResponse:
         """Perform an HTTP request and fully consume the response body.
@@ -176,7 +179,8 @@ class AwtrixHttpClient(AwtrixClient):
                 status = response.status
                 if status != 200:
                     raise AwtrixApiError(
-                        f"AWTRIX API returned status {status} for {method} {url}"
+                        f"AWTRIX API returned status {status} for {method} {url}",
+                        status,
                     )
                 content_type = response.headers.get("Content-Type", "")
                 if "json" in content_type:
@@ -188,7 +192,7 @@ class AwtrixHttpClient(AwtrixClient):
                 return _AwtrixResponse(status, json_data, raw_bytes, method, url)
         except AwtrixApiError:
             raise
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+        except (TimeoutError, aiohttp.ClientError) as err:
             raise AwtrixConnectionError(f"Cannot connect to AWTRIX device at {url}") from err
 
     async def get_stats(self) -> AwtrixStats:
@@ -281,18 +285,9 @@ class AwtrixHttpClient(AwtrixClient):
         response = await self._request("GET", "/screen")
         return await response.read()
 
-    async def ensure_icons(self, icon_ids: list[int]) -> None:
-        for icon_id in icon_ids:
-            try:
-                await self._ensure_single_icon(icon_id)
-            except Exception:
-                _LOGGER.warning("Failed to provision icon %s", icon_id, exc_info=True)
-
-    async def _ensure_single_icon(self, icon_id: int) -> None:
+    async def _list_icons(self) -> set[str] | None:
+        """List /ICONS once; return file names or None if unavailable."""
         base = f"http://{self._host}:{self._port}"
-        _LOGGER.info("Icon %s: checking existence on %s", icon_id, base)
-
-        # Check if already exists via /list endpoint
         try:
             async with self._session.get(
                 f"{base}/list?dir=/ICONS", timeout=self._timeout, auth=self._auth
@@ -300,15 +295,32 @@ class AwtrixHttpClient(AwtrixClient):
                 if resp.status == 200:
                     # AWTRIX returns text/json instead of application/json
                     files = await resp.json(content_type=None)
-                    existing = {f.get("name", "") for f in files}
-                    if f"{icon_id}.gif" in existing or f"{icon_id}.jpg" in existing:
-                        _LOGGER.info("Icon %s: already on device, skipping", icon_id)
-                        return
-                    _LOGGER.info("Icon %s: not found in %d files on device", icon_id, len(files))
-                else:
-                    _LOGGER.info("Icon %s: /list returned HTTP %s", icon_id, resp.status)
+                    return {f.get("name", "") for f in files}
+                _LOGGER.info("/list returned HTTP %s", resp.status)
         except Exception as err:
-            _LOGGER.info("Icon %s: /list check failed: %s", icon_id, err)
+            _LOGGER.info("/list check failed: %s", err)
+        return None
+
+    async def ensure_icons(self, icon_ids: list[int]) -> None:
+        pending = [i for i in icon_ids if i not in self._provisioned_icons]
+        if not pending:
+            return
+        existing = await self._list_icons()
+        for icon_id in pending:
+            if existing is not None and (
+                f"{icon_id}.gif" in existing or f"{icon_id}.jpg" in existing
+            ):
+                self._provisioned_icons.add(icon_id)
+                continue
+            try:
+                if await self._ensure_single_icon(icon_id):
+                    self._provisioned_icons.add(icon_id)
+            except Exception:
+                _LOGGER.warning("Failed to provision icon %s", icon_id, exc_info=True)
+
+    async def _ensure_single_icon(self, icon_id: int) -> bool:
+        """Download an icon from LaMetric and upload it to the device."""
+        base = f"http://{self._host}:{self._port}"
 
         # Download from LaMetric
         from .const import LAMETRIC_ICON_URL
@@ -318,7 +330,7 @@ class AwtrixHttpClient(AwtrixClient):
         async with self._session.get(dl_url, timeout=dl_timeout) as resp:
             if resp.status != 200:
                 _LOGGER.warning("Icon %s: LaMetric download failed HTTP %s", icon_id, resp.status)
-                return
+                return False
             content_type = resp.content_type or ""
             icon_bytes = await resp.read()
             _LOGGER.info("Icon %s: downloaded %d bytes (%s)", icon_id, len(icon_bytes), content_type)
@@ -333,9 +345,10 @@ class AwtrixHttpClient(AwtrixClient):
         async with self._session.post(f"{base}/edit", data=form, timeout=self._timeout, auth=self._auth) as resp:
             if resp.status == 200:
                 _LOGGER.info("Icon %s: uploaded successfully", icon_id)
-            else:
-                body = await resp.text()
-                _LOGGER.warning("Icon %s: upload failed HTTP %s: %s", icon_id, resp.status, body[:200])
+                return True
+            body = await resp.text()
+            _LOGGER.warning("Icon %s: upload failed HTTP %s: %s", icon_id, resp.status, body[:200])
+            return False
 
 
 class AwtrixMqttClient(AwtrixClient):
@@ -436,6 +449,11 @@ class AwtrixMqttClient(AwtrixClient):
     async def switch_app(self, name: str) -> None:
         """Switch to a specific app by name."""
         await self._publish("switch", json.dumps({"name": name}))
+
+    @property
+    def prefix(self) -> str:
+        """MQTT topic prefix."""
+        return self._prefix
 
     async def update_settings(self, settings: dict) -> None:
         """Update device settings."""

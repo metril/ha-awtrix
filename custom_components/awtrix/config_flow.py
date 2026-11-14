@@ -8,13 +8,13 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlowWithReload,
 )
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
@@ -63,6 +63,16 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+def normalize_device_uid(device_info: dict[str, Any]) -> str:
+    """Return the device's uid as a plain string (ids may be a str or a list)."""
+    ids = device_info.get("ids") or device_info.get("identifiers") or ""
+    if isinstance(ids, (list, tuple, set)):
+        ids = next((i for i in ids if i), "")
+    if isinstance(ids, (list, tuple)):  # nested identifier pairs
+        ids = ids[-1] if ids else ""
+    return str(ids).strip()
+
 
 STEP_CONNECTION_TYPE_SCHEMA = vol.Schema(
     {
@@ -166,6 +176,7 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
         discovered: dict[str, dict] = {}
         event = asyncio.Event()
 
+        @callback
         def _on_message(message):
             try:
                 payload = json.loads(message.payload)
@@ -177,7 +188,7 @@ class AwtrixConfigFlow(ConfigFlow, domain=DOMAIN):
             # ArduinoHA uses abbreviated keys: "dev" not "device", "uniq_id" not "unique_id"
             device_info = payload.get("dev") or payload.get("device") or {}
             device_name = device_info.get("name", "")
-            device_ids = str(device_info.get("ids") or device_info.get("identifiers", ""))
+            device_ids = normalize_device_uid(device_info)
             unique_id = payload.get("uniq_id") or payload.get("unique_id", "")
             manufacturer = device_info.get("mf") or device_info.get("manufacturer", "")
 

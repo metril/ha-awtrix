@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any
-
-from homeassistant.util.dt import now as dt_now
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import (
     async_track_state_change_event,
+    async_track_time_change,
     async_track_time_interval,
 )
+from homeassistant.util import dt as dt_util
+from homeassistant.util.dt import now as dt_now
 
 from .client import AwtrixClient
 from .const import (
@@ -31,12 +33,10 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Base properties applied to all app payloads
-_BASE_PROPS = {
-    "textCase": 2,   # preserve original case
-    "pushIcon": 2,   # icon scrolls with text
-    "lifetime": 0,   # don't auto-expire
-}
+_INVALID_STATES = frozenset({"unavailable", "unknown"})
+
+
+_RESEND_AFTER = 300  # seconds
 
 
 class AwtrixAppManager:
@@ -55,6 +55,9 @@ class AwtrixAppManager:
         self._icon_client = icon_client or client
         self._unsub_listeners: list[Any] = []
         self._active_apps: set[str] = set()
+        # app name -> (payload, monotonic send time); entries expire so apps
+        # lost on a device reboot are re-sent.
+        self._last_payloads: dict[str, tuple[dict, float]] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -95,17 +98,26 @@ class AwtrixAppManager:
                 continue
             try:
                 await self._setup_app(app_name, cfg)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOGGER.exception("Error setting up app template '%s'", app_name)
 
-    async def async_stop(self) -> None:
-        """Unsubscribe all listeners and remove active apps from the device."""
+    def _unsubscribe_all(self) -> None:
         for unsub in self._unsub_listeners:
             try:
                 unsub()
             except Exception:  # noqa: BLE001
-                pass
+                _LOGGER.debug("Failed to unsubscribe listener", exc_info=True)
         self._unsub_listeners.clear()
+
+    async def async_resend_all(self) -> None:
+        """Re-push every enabled app (e.g. after the device rebooted)."""
+        self._unsubscribe_all()
+        self._last_payloads.clear()
+        await self.async_start()
+
+    async def async_stop(self) -> None:
+        """Unsubscribe all listeners and remove active apps from the device."""
+        self._unsubscribe_all()
 
         for app_name in list(self._active_apps):
             try:
@@ -113,6 +125,7 @@ class AwtrixAppManager:
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Failed to remove app '%s' on stop", app_name)
         self._active_apps.clear()
+        self._last_payloads.clear()
 
     # ------------------------------------------------------------------
     # App setup dispatch
@@ -128,10 +141,8 @@ class AwtrixAppManager:
             await self._setup_entity_app(app_name, cfg, self._build_humidity_payload)
         elif app_name == "battery":
             await self._setup_entity_app(app_name, cfg, self._build_battery_payload)
-        elif app_name == "date":
-            await self._setup_time_app(app_name, cfg, timedelta(seconds=60))
-        elif app_name == "time":
-            await self._setup_time_app(app_name, cfg, timedelta(seconds=30))
+        elif app_name == "date" or app_name == "time":
+            await self._setup_time_app(app_name, cfg)
         elif app_name == "countdown":
             await self._setup_entity_app(app_name, cfg, self._build_countdown_payload)
         elif app_name == "text":
@@ -171,10 +182,8 @@ class AwtrixAppManager:
     # Time/date apps (periodic)
     # ------------------------------------------------------------------
 
-    async def _setup_time_app(
-        self, app_name: str, cfg: dict, interval: timedelta
-    ) -> None:
-        """Push initial time/date and set up periodic refresh."""
+    async def _setup_time_app(self, app_name: str, cfg: dict) -> None:
+        """Push initial time/date and refresh on every minute boundary."""
         payload = self._build_time_or_date_payload(app_name, cfg)
         if payload:
             await self._send_app(app_name, payload)
@@ -185,7 +194,7 @@ class AwtrixAppManager:
             if p:
                 self._hass.async_create_task(self._send_app(app_name, p))
 
-        unsub = async_track_time_interval(self._hass, _tick, interval)
+        unsub = async_track_time_change(self._hass, _tick, second=0)
         self._unsub_listeners.append(unsub)
 
     def _build_time_or_date_payload(self, app_name: str, cfg: dict) -> dict | None:
@@ -249,6 +258,14 @@ class AwtrixAppManager:
                                 self._send_app("weather_current", p)
                             )
                     elif mode == "today":
+                        if new_state.state in _INVALID_STATES:
+                            continue
+                        old = event.data.get("old_state")
+                        if old is not None and all(
+                            old.attributes.get(k) == new_state.attributes.get(k)
+                            for k in ("temperature", "temperature_unit")
+                        ) and old.state == new_state.state:
+                            continue  # irrelevant attribute-only change
                         self._hass.async_create_task(
                             self._push_weather_today(entity_id, cfg, new_state)
                         )
@@ -314,6 +331,8 @@ class AwtrixAppManager:
         if result and isinstance(result, dict):
             forecasts = result.get(entity_id, {}).get("forecast", [])
 
+        if state is not None and state.state in _INVALID_STATES:
+            return
         condition = state.state if state is not None else "unknown"
         icon = self._get_weather_icon(condition, cfg)
 
@@ -396,6 +415,8 @@ class AwtrixAppManager:
     ) -> dict | None:
         """Build payload for the 'current' weather mode."""
         condition = state.state
+        if condition in _INVALID_STATES:
+            return None
         icon = self._get_weather_icon(condition, cfg)
         temp = state.attributes.get("temperature", "")
         unit = state.attributes.get("temperature_unit", "°")
@@ -453,7 +474,7 @@ class AwtrixAppManager:
             for fc in forecasts[:count]:
                 dt_str = fc.get("datetime", "")
                 try:
-                    dt = datetime.fromisoformat(dt_str)
+                    dt = dt_util.as_local(datetime.fromisoformat(dt_str))
                     h = dt.hour % 12 or 12
                     hour = f"{h}{'P' if dt.hour >= 12 else 'A'}"
                 except (ValueError, TypeError):
@@ -475,7 +496,7 @@ class AwtrixAppManager:
             for fc in forecasts[:count]:
                 dt_str = fc.get("datetime", "")
                 try:
-                    dt = datetime.fromisoformat(dt_str)
+                    dt = dt_util.as_local(datetime.fromisoformat(dt_str))
                     day = dt.strftime("%a")[:2]  # e.g. "Mo", "Tu"
                 except (ValueError, TypeError):
                     day = dt_str[:2]
@@ -498,6 +519,8 @@ class AwtrixAppManager:
     # ------------------------------------------------------------------
 
     def _build_temperature_payload(self, state, cfg: dict) -> dict | None:
+        if state.state in _INVALID_STATES:
+            return None
         try:
             val = round(float(state.state), 1)
             text = f"{val}\u00b0"
@@ -531,6 +554,8 @@ class AwtrixAppManager:
         return self._apply_display_config(payload, cfg)
 
     def _build_humidity_payload(self, state, cfg: dict) -> dict | None:
+        if state.state in _INVALID_STATES:
+            return None
         text = f"{state.state}%"
         payload = {
             "icon": ICON_HUMIDITY,
@@ -570,6 +595,8 @@ class AwtrixAppManager:
         return self._apply_display_config(payload, cfg)
 
     def _build_countdown_payload(self, state, cfg: dict) -> dict | None:
+        if state.state in _INVALID_STATES:
+            return None
         payload = {
             "icon": ICON_HOURGLASS,
             "text": state.state,
@@ -580,6 +607,8 @@ class AwtrixAppManager:
         return self._apply_display_config(payload, cfg)
 
     def _build_text_payload(self, state, cfg: dict) -> dict | None:
+        if state.state in _INVALID_STATES:
+            return None
         payload = {
             "icon": ICON_TEXT,
             "text": state.state,
@@ -593,9 +622,19 @@ class AwtrixAppManager:
     # Helpers
     # ------------------------------------------------------------------
 
+    @callback
+    def invalidate_cache(self) -> None:
+        """Forget sent payloads so the next update re-sends every app."""
+        self._last_payloads.clear()
+
     async def _send_app(self, app_name: str, payload: dict) -> None:
+        cached = self._last_payloads.get(app_name)
+        now = time.monotonic()
+        if cached and cached[0] == payload and now - cached[1] < _RESEND_AFTER:
+            return
         try:
             await self._client.send_app(app_name, payload)
             self._active_apps.add(app_name)
+            self._last_payloads[app_name] = (dict(payload), now)
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Failed to send app '%s' to device", app_name)

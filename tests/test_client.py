@@ -2,25 +2,23 @@
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 
 # Allow importing the custom component without Home Assistant installed.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 import aiohttp
+import pytest
 
 from custom_components.awtrix.client import (
-    AwtrixHttpClient,
-    AwtrixConnectionError,
     AwtrixApiError,
+    AwtrixConnectionError,
+    AwtrixHttpClient,
 )
 from custom_components.awtrix.models import AwtrixStats
-
 
 # ---------------------------------------------------------------------------
 # Helpers

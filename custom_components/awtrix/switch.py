@@ -7,10 +7,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_NIGHT_MODE_BRIGHTNESS,
-    DOMAIN,
+    CONF_NIGHT_MODE_END,
+    CONF_NIGHT_MODE_SCHEDULE,
+    CONF_NIGHT_MODE_START,
     SETTING_AUTO_BRIGHTNESS,
     SETTING_AUTO_TRANSITION,
     SETTING_BRIGHTNESS,
@@ -120,7 +124,7 @@ class AwtrixAutoBrightnessSwitch(AwtrixEntity, SwitchEntity):
             self.coordinator.async_set_updated_data(self.coordinator.data)
 
 
-class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
+class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity, RestoreEntity):
     """Switch to activate night mode on the AWTRIX device."""
 
     _attr_name = "Night Mode"
@@ -135,6 +139,48 @@ class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
         self._previous_auto_transition: bool | None = None
         self._is_on: bool = False
 
+    async def async_added_to_hass(self) -> None:
+        """Restore state and apply the schedule if currently inside the window."""
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None:
+            self._is_on = last.state == "on"
+            prev = last.attributes.get("previous_brightness")
+            if prev is not None:
+                try:
+                    self._previous_brightness = int(prev)
+                except (TypeError, ValueError):
+                    pass
+        if not self._is_on and self._in_schedule_window():
+            try:
+                await self.async_turn_on()
+            except HomeAssistantError:
+                pass
+
+    def _in_schedule_window(self) -> bool:
+        opts = self._entry.options
+        if not opts.get(CONF_NIGHT_MODE_SCHEDULE, False):
+            return False
+        try:
+            sh, sm = (int(x) for x in opts.get(CONF_NIGHT_MODE_START, "").split(":")[:2])
+            eh, em = (int(x) for x in opts.get(CONF_NIGHT_MODE_END, "").split(":")[:2])
+        except (ValueError, TypeError):
+            return False
+        now = dt_util.now()
+        cur, start, end = now.hour * 60 + now.minute, sh * 60 + sm, eh * 60 + em
+        if start == end:
+            return False
+        if start < end:
+            return start <= cur < end
+        return cur >= start or cur < end
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Expose saved brightness so it survives restarts."""
+        if self._previous_brightness is None:
+            return {}
+        return {"previous_brightness": self._previous_brightness}
+
     @property
     def is_on(self) -> bool:
         """Return whether night mode is active."""
@@ -142,8 +188,9 @@ class AwtrixNightModeSwitch(AwtrixEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Activate night mode."""
-        # Save current state before changing it
-        if self.coordinator.data:
+        # Save current state only on the off->on transition, so a second
+        # turn-on can't overwrite it with the night value.
+        if not self._is_on and self.coordinator.data:
             self._previous_brightness = self.coordinator.data.settings.get(SETTING_BRIGHTNESS)
             self._previous_auto_transition = self.coordinator.data.settings.get(SETTING_AUTO_TRANSITION, True)
 
